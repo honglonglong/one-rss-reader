@@ -196,7 +196,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-2">
           <Button
             variant={view === 'all' ? 'secondary' : 'ghost'}

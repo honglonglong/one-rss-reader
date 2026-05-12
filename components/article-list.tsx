@@ -123,7 +123,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
         showHideReadToggle={showHideReadToggle}
         onCleanup={handleCleanup}
       />
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col">
           {articles.map((article) => (
             <ArticleItem
