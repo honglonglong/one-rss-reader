@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import { getAllFeeds, addFeed, deleteFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed } from '@/lib/db'
+import { getAllFeeds, addFeed, deleteFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed } from '@/lib/db'
 import { parseFeed, createFeedFromParsed } from '@/lib/rss-parser'
 import type { Feed } from '@/lib/types'
 
@@ -67,7 +67,11 @@ export function useFeeds() {
         
         // 只保留收藏的文章，非收藏文章由新拉取的内容替换
         await deleteNonSavedArticlesByFeed(feed.id)
-        await addArticles(updatedArticles)
+        // 获取剩余收藏文章的链接，避免重复添加
+        const savedArticles = await getArticlesByFeed(feed.id)
+        const savedLinks = new Set(savedArticles.map(a => a.link))
+        const articlesToAdd = updatedArticles.filter(a => !savedLinks.has(a.link))
+        await addArticles(articlesToAdd)
       } catch (error) {
         console.error(`Failed to refresh feed ${feed.title}:`, error)
       }

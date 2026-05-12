@@ -16,10 +16,59 @@ const COLOR_EMOJI: Record<HighlightColor, string> = {
   purple: '🟣',
 }
 
+function htmlToMarkdown(html: string): string {
+  // Basic HTML to markdown conversion
+  let text = html
+  // Headers
+  text = text.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
+  text = text.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
+  text = text.replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n')
+  text = text.replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n\n')
+  text = text.replace(/<h5[^>]*>(.*?)<\/h5>/gi, '##### $1\n\n')
+  text = text.replace(/<h6[^>]*>(.*?)<\/h6>/gi, '###### $1\n\n')
+  // Bold and italic
+  text = text.replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+  text = text.replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
+  text = text.replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
+  text = text.replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
+  // Links
+  text = text.replace(/<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, '[$2]($1)')
+  // Images
+  text = text.replace(/<img[^>]+alt=["']([^"']*)["'][^>]+src=["']([^"']+)["'][^>]*\/?>/gi, '![$1]($2)')
+  text = text.replace(/<img[^>]+src=["']([^"']+)["'][^>]*\/?>/gi, '![]($1)')
+  // Blockquotes
+  text = text.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (_, content) => {
+    return content.split('\n').map((line: string) => `> ${line}`).join('\n') + '\n\n'
+  })
+  // Code
+  text = text.replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, '```\n$1\n```\n\n')
+  text = text.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
+  // Lists
+  text = text.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
+  text = text.replace(/<\/ul>|<\/ol>/gi, '\n')
+  text = text.replace(/<ul[^>]*>|<ol[^>]*>/gi, '\n')
+  // Paragraphs and line breaks
+  text = text.replace(/<\/p>/gi, '\n\n')
+  text = text.replace(/<br\s*\/?>/gi, '\n')
+  // Remove remaining tags
+  text = text.replace(/<[^>]+>/g, '')
+  // Decode common HTML entities
+  text = text.replace(/&amp;/g, '&')
+  text = text.replace(/&lt;/g, '<')
+  text = text.replace(/&gt;/g, '>')
+  text = text.replace(/&quot;/g, '"')
+  text = text.replace(/&#39;/g, "'")
+  text = text.replace(/&nbsp;/g, ' ')
+  // Normalize whitespace
+  text = text.replace(/\n{3,}/g, '\n\n').trim()
+  return text
+}
+
 export function generateMarkdown(
   article: Article,
   highlights: Highlight[],
-  includeEmoji: boolean = false
+  includeEmoji: boolean = false,
+  includeContent: boolean = true
 ): string {
   const now = new Date()
   const dateStr = now.toLocaleString('zh-CN')
@@ -30,6 +79,7 @@ export function generateMarkdown(
   md += `**发布时间**: ${new Date(article.pubDate).toLocaleString('zh-CN')}\n`
   md += `**导出时间**: ${dateStr}\n\n`
   md += `---\n\n`
+
   md += `## 高亮与笔记\n\n`
 
   if (highlights.length === 0) {
@@ -61,6 +111,11 @@ export function generateMarkdown(
         }
       }
     }
+  }
+  if (includeContent && article.content) {
+    md += `## 文章正文\n\n`
+    md += htmlToMarkdown(article.content)
+    md += `\n\n---\n\n`
   }
 
   md += `---\n\n`

@@ -143,10 +143,10 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
 
   const handleExport = () => {
     if (!article) return
-    const md = generateMarkdown(article, highlights)
+    const md = generateMarkdown(article, highlights, false, true)
     const filename = generateFilename(article.title)
     downloadMarkdown(md, filename)
-    toast.success('已导出笔记')
+    toast.success('已导出文章')
   }
 
   const handleToggleSaved = async () => {
@@ -218,8 +218,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               size="icon"
               className="size-8"
               onClick={handleExport}
-              disabled={highlights.length === 0}
-              title="导出笔记"
+              title="导出文章到 Markdown"
             >
               <FileDown className="size-4" />
             </Button>

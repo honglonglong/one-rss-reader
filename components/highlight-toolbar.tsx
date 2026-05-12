@@ -40,6 +40,8 @@ export function HighlightToolbar({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      // Don't close while the note popover is open
+      if (showNote) return
       if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
         onClose()
       }
@@ -52,7 +54,7 @@ export function HighlightToolbar({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [position, onClose])
+  }, [position, showNote, onClose])
 
   const handleColorClick = (color: HighlightColor) => {
     setSelectedColor(color)

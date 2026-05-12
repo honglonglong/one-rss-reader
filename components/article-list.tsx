@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { Bookmark, BookmarkCheck, Loader2, Eye, EyeOff, Trash2 } from 'lucide-react'
+import { Bookmark, BookmarkCheck, Loader2, Eye, EyeOff, Trash2, HardDriveDownload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -275,6 +275,18 @@ function ArticleItem({ article, isSelected, onSelect, onToggleSaved }: ArticleIt
         <span>{timeAgo}</span>
         <span>·</span>
         <span>{readingTime} 分钟</span>
+        {article.isSaved && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HardDriveDownload className="size-3 text-primary shrink-0" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>已离线缓存</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
     </div>
   )
