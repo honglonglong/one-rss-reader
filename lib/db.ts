@@ -96,6 +96,22 @@ export async function getFeedByUrl(url: string): Promise<Feed | undefined> {
   return db.getFromIndex('feeds', 'by-url', url)
 }
 
+export async function updateFeed(id: string, updates: Partial<Pick<Feed, 'title' | 'url' | 'group'>>): Promise<void> {
+  const db = await getDB()
+  const feed = await db.get('feeds', id)
+  if (feed) {
+    Object.assign(feed, updates)
+    await db.put('feeds', feed)
+    // If URL changed, also update feedTitle on existing articles
+    if (updates.title) {
+      const articles = await db.getAllFromIndex('articles', 'by-feed', id)
+      const tx = db.transaction('articles', 'readwrite')
+      await Promise.all(articles.map((a) => tx.store.put({ ...a, feedTitle: updates.title! })))
+      await tx.done
+    }
+  }
+}
+
 // Article operations
 export async function addArticle(article: Article): Promise<void> {
   const db = await getDB()

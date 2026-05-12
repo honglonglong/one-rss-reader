@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import { getAllFeeds, addFeed, deleteFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed } from '@/lib/db'
+import { getAllFeeds, addFeed, deleteFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed, updateFeed } from '@/lib/db'
 import { parseFeed, createFeedFromParsed } from '@/lib/rss-parser'
 import type { Feed } from '@/lib/types'
 
@@ -80,6 +80,11 @@ export function useFeeds() {
     await mutate()
   }
 
+  const editFeed = async (feedId: string, updates: Partial<Pick<import('@/lib/types').Feed, 'title' | 'url' | 'group'>>) => {
+    await updateFeed(feedId, updates)
+    await mutate()
+  }
+
   return {
     feeds: feeds || [],
     isLoading,
@@ -88,6 +93,7 @@ export function useFeeds() {
     unsubscribe,
     refresh,
     setFeedGroup,
+    editFeed,
     mutate,
   }
 }

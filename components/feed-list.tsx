@@ -16,11 +16,20 @@ import {
   Edit2,
   FileText,
   StickyNote,
+  Pencil,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,8 +71,9 @@ interface FeedListProps {
 }
 
 export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelectHighlights, view }: FeedListProps) {
-  const { feeds, unsubscribe, refresh, setFeedGroup, isLoading } = useFeeds()
+  const { feeds, unsubscribe, refresh, setFeedGroup, editFeed, isLoading } = useFeeds()
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
+  const [editTarget, setEditTarget] = useState<Feed | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['__ungrouped__']))
   const [existingGroups, setExistingGroups] = useState<string[]>([])
@@ -130,6 +140,12 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   const handleMoveToGroup = async (feed: Feed, newGroup: string | undefined) => {
     await setFeedGroup(feed.id, newGroup)
     toast.success(newGroup ? `已移动到「${newGroup}」` : '已移出分组')
+  }
+
+  const handleEditSave = async (id: string, updates: Partial<Pick<Feed, 'title' | 'url' | 'group'>>) => {
+    await editFeed(id, updates)
+    toast.success('已更新订阅')
+    setEditTarget(null)
   }
 
   const toggleGroup = (groupName: string) => {
@@ -231,6 +247,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
                   onMoveToGroup={handleMoveToGroup}
                   existingGroups={existingGroups}
                   onLoadGroups={loadGroups}
+                  onEdit={setEditTarget}
                 />
               ))}
             </div>
@@ -252,6 +269,15 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {editTarget && (
+        <EditFeedDialog
+          feed={editTarget}
+          existingGroups={existingGroups}
+          onSave={(updates) => handleEditSave(editTarget.id, updates)}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
     </div>
   )
 }
@@ -267,6 +293,7 @@ interface FeedGroupItemProps {
   onMoveToGroup: (feed: Feed, group: string | undefined) => void
   existingGroups: string[]
   onLoadGroups: () => void
+  onEdit: (feed: Feed) => void
 }
 
 function FeedGroupItem({
@@ -280,6 +307,7 @@ function FeedGroupItem({
   onMoveToGroup,
   existingGroups,
   onLoadGroups,
+  onEdit,
 }: FeedGroupItemProps) {
   const isUngrouped = group.name === '__ungrouped__'
 
@@ -295,8 +323,7 @@ function FeedGroupItem({
             onDelete={() => onDelete(feed)}
             onMoveToGroup={(g) => onMoveToGroup(feed, g)}
             existingGroups={existingGroups}
-            onLoadGroups={onLoadGroups}
-          />
+            onLoadGroups={onLoadGroups}              onEdit={() => onEdit(feed)}          />
         ))}
       </>
     )
@@ -332,6 +359,7 @@ function FeedGroupItem({
               onMoveToGroup={(g) => onMoveToGroup(feed, g)}
               existingGroups={existingGroups}
               onLoadGroups={onLoadGroups}
+              onEdit={() => onEdit(feed)}
             />
           ))}
         </div>
@@ -348,6 +376,7 @@ interface FeedItemProps {
   onMoveToGroup: (group: string | undefined) => void
   existingGroups: string[]
   onLoadGroups: () => void
+  onEdit: () => void
 }
 
 function FeedItem({
@@ -358,6 +387,7 @@ function FeedItem({
   onMoveToGroup,
   existingGroups,
   onLoadGroups,
+  onEdit,
 }: FeedItemProps) {
   const [newGroupInput, setNewGroupInput] = useState('')
   const [showNewGroupInput, setShowNewGroupInput] = useState(false)
@@ -397,49 +427,10 @@ function FeedItem({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Folder className="size-4 mr-2" />
-              移动到分组
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="min-w-44">
-              {feed.group && (
-                <DropdownMenuItem onClick={() => onMoveToGroup(undefined)}>
-                  移出分组
-                </DropdownMenuItem>
-              )}
-              {existingGroups
-                .filter((g) => g !== feed.group)
-                .map((g) => (
-                  <DropdownMenuItem key={g} onClick={() => onMoveToGroup(g)}>
-                    {g}
-                  </DropdownMenuItem>
-                ))}
-              <DropdownMenuSeparator />
-              {showNewGroupInput ? (
-                <div className="px-2 py-1.5">
-                  <Input
-                    placeholder="新分组名称"
-                    value={newGroupInput}
-                    onChange={(e) => setNewGroupInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newGroupInput.trim()) {
-                        onMoveToGroup(newGroupInput.trim())
-                        setNewGroupInput('')
-                        setShowNewGroupInput(false)
-                      }
-                    }}
-                    autoFocus
-                    className="h-7 text-sm"
-                  />
-                </div>
-              ) : (
-                <DropdownMenuItem onClick={() => setShowNewGroupInput(true)}>
-                  新建分组...
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          <DropdownMenuItem onClick={onEdit}>
+            <Pencil className="size-4 mr-2" />
+            编辑订阅
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
@@ -451,5 +442,99 @@ function FeedItem({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  )
+}
+
+interface EditFeedDialogProps {
+  feed: Feed
+  existingGroups: string[]
+  onSave: (updates: Partial<Pick<Feed, 'title' | 'url' | 'group'>>) => void
+  onClose: () => void
+}
+
+function EditFeedDialog({ feed, existingGroups, onSave, onClose }: EditFeedDialogProps) {
+  const [title, setTitle] = useState(feed.title)
+  const [url, setUrl] = useState(feed.url)
+  const [group, setGroup] = useState(feed.group || '')
+  const [newGroupInput, setNewGroupInput] = useState('')
+  const [showNewGroup, setShowNewGroup] = useState(false)
+
+  const handleSave = () => {
+    const trimmedTitle = title.trim()
+    const trimmedUrl = url.trim()
+    if (!trimmedTitle || !trimmedUrl) return
+    const finalGroup = showNewGroup
+      ? newGroupInput.trim() || undefined
+      : group || undefined
+    onSave({ title: trimmedTitle, url: trimmedUrl, group: finalGroup })
+  }
+
+  const allGroups = Array.from(new Set([...existingGroups, ...(feed.group ? [feed.group] : [])]))
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>编辑订阅</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="feed-title">标题</Label>
+            <Input
+              id="feed-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="订阅标题"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="feed-url">订阅 URL</Label>
+            <Input
+              id="feed-url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com/feed.xml"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>分组</Label>
+            {!showNewGroup ? (
+              <div className="flex gap-2">
+                <select
+                  className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={group}
+                  onChange={(e) => setGroup(e.target.value)}
+                >
+                  <option value="">无分组</option>
+                  {allGroups.map((g) => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+                <Button variant="outline" size="sm" onClick={() => { setShowNewGroup(true); setGroup('') }}>
+                  新建分组
+                </Button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Input
+                  autoFocus
+                  placeholder="新分组名称"
+                  value={newGroupInput}
+                  onChange={(e) => setNewGroupInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Escape' && setShowNewGroup(false)}
+                />
+                <Button variant="outline" size="sm" onClick={() => setShowNewGroup(false)}>
+                  取消
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>取消</Button>
+          <Button onClick={handleSave} disabled={!title.trim() || !url.trim()}>保存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
