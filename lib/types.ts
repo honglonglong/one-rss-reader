@@ -54,6 +54,7 @@ export interface ReadingSettings {
   theme: 'light' | 'dark' | 'sepia'
   fontFamily: 'sans' | 'serif'
   maxWidth: number
+  hideRead: boolean
 }
 
 export const DEFAULT_READING_SETTINGS: ReadingSettings = {
@@ -62,6 +63,7 @@ export const DEFAULT_READING_SETTINGS: ReadingSettings = {
   theme: 'light',
   fontFamily: 'sans',
   maxWidth: 680,
+  hideRead: false,
 }
 
 export interface OPMLOutline {

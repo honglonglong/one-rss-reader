@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { Bookmark, BookmarkCheck, Loader2, Eye, EyeOff, Trash2, HardDriveDownload } from 'lucide-react'
@@ -15,6 +15,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useArticles, useSavedArticles } from '@/hooks/use-articles'
+import { useReadingSettings } from '@/hooks/use-reading-settings'
 import { htmlToText, getReadingTime } from '@/lib/rss-parser'
 import { toast } from 'sonner'
 import type { Article } from '@/lib/types'
@@ -27,14 +28,17 @@ interface ArticleListProps {
 }
 
 export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }: ArticleListProps) {
-  const [hideRead, setHideRead] = useState(false)
+  const { settings, updateSettings } = useReadingSettings()
+  const hideRead = view === 'saved' ? false : (settings.hideRead ?? false)
   
   const {
     articles: feedArticles,
     isLoading: isFeedLoading,
+    markAsRead,
     toggleSaved: toggleFeedSaved,
     cleanup,
-  } = useArticles(view === 'feed' ? feedId || undefined : undefined, hideRead && view !== 'saved')
+    mutate: mutateFeedArticles,
+  } = useArticles(view === 'feed' ? feedId || undefined : undefined, hideRead)
   
   const {
     articles: savedArticles,
@@ -48,6 +52,17 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
 
   // 在 saved 视图不显示隐藏已读按钮
   const showHideReadToggle = view !== 'saved'
+
+  const handleToggleHideRead = () => {
+    updateSettings({ hideRead: !hideRead })
+  }
+
+  const handleSelectArticle = async (article: Article) => {
+    if (!article.isRead) {
+      await markAsRead(article.id)
+    }
+    onSelectArticle(article)
+  }
 
   // 计算已读和未读数量
   const readCount = articles.filter(a => a.isRead).length
@@ -84,7 +99,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
           readCount={0}
           unreadCount={0}
           hideRead={hideRead}
-          onToggleHideRead={() => setHideRead(!hideRead)}
+          onToggleHideRead={handleToggleHideRead}
           showHideReadToggle={showHideReadToggle}
           onCleanup={handleCleanup}
         />
@@ -101,7 +116,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
               variant="link"
               size="sm"
               className="mt-2"
-              onClick={() => setHideRead(false)}
+              onClick={handleToggleHideRead}
             >
               显示已读文章
             </Button>
@@ -119,7 +134,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
         readCount={readCount}
         unreadCount={unreadCount}
         hideRead={hideRead}
-        onToggleHideRead={() => setHideRead(!hideRead)}
+        onToggleHideRead={handleToggleHideRead}
         showHideReadToggle={showHideReadToggle}
         onCleanup={handleCleanup}
       />
@@ -130,7 +145,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
               key={article.id}
               article={article}
               isSelected={selectedArticleId === article.id}
-              onSelect={() => onSelectArticle(article)}
+              onSelect={() => handleSelectArticle(article)}
               onToggleSaved={(e) => handleToggleSaved(e, article.id)}
             />
           ))}
