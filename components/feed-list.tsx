@@ -56,6 +56,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { useFeeds } from '@/hooks/use-feeds'
+import { useUnreadCounts } from '@/hooks/use-articles'
 import { AddFeedDialog } from './add-feed-dialog'
 import { OPMLDialog } from './opml-dialog'
 import { getAllGroups } from '@/lib/db'
@@ -72,6 +73,7 @@ interface FeedListProps {
 
 export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelectHighlights, view }: FeedListProps) {
   const { feeds, unsubscribe, refresh, setFeedGroup, editFeed, isLoading } = useFeeds()
+  const unreadCounts = useUnreadCounts()
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -248,6 +250,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
                   existingGroups={existingGroups}
                   onLoadGroups={loadGroups}
                   onEdit={setEditTarget}
+                  unreadCounts={unreadCounts}
                 />
               ))}
             </div>
@@ -294,6 +297,7 @@ interface FeedGroupItemProps {
   existingGroups: string[]
   onLoadGroups: () => void
   onEdit: (feed: Feed) => void
+  unreadCounts: Record<string, number>
 }
 
 function FeedGroupItem({
@@ -308,6 +312,7 @@ function FeedGroupItem({
   existingGroups,
   onLoadGroups,
   onEdit,
+  unreadCounts,
 }: FeedGroupItemProps) {
   const isUngrouped = group.name === '__ungrouped__'
 
@@ -323,7 +328,8 @@ function FeedGroupItem({
             onDelete={() => onDelete(feed)}
             onMoveToGroup={(g) => onMoveToGroup(feed, g)}
             existingGroups={existingGroups}
-            onLoadGroups={onLoadGroups}              onEdit={() => onEdit(feed)}          />
+            onLoadGroups={onLoadGroups}              onEdit={() => onEdit(feed)}          unreadCount={unreadCounts[feed.id] || 0}
+          />
         ))}
       </>
     )
@@ -344,7 +350,16 @@ function FeedGroupItem({
             <Folder className="size-4 text-muted-foreground" />
           )}
           <span className="flex-1 text-left truncate">{group.name}</span>
-          <span className="text-xs text-muted-foreground">{group.feeds.length}</span>
+          {(() => {
+            const total = group.feeds.reduce((sum, f) => sum + (unreadCounts[f.id] || 0), 0)
+            return total > 0 ? (
+              <span className="min-w-[1.25rem] rounded-full bg-primary px-1 py-0.5 text-center text-[10px] font-medium leading-none text-primary-foreground">
+                {total > 99 ? '99+' : total}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">{group.feeds.length}</span>
+            )
+          })()}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -360,6 +375,7 @@ function FeedGroupItem({
               existingGroups={existingGroups}
               onLoadGroups={onLoadGroups}
               onEdit={() => onEdit(feed)}
+              unreadCount={unreadCounts[feed.id] || 0}
             />
           ))}
         </div>
@@ -377,6 +393,7 @@ interface FeedItemProps {
   existingGroups: string[]
   onLoadGroups: () => void
   onEdit: () => void
+  unreadCount: number
 }
 
 function FeedItem({
@@ -388,9 +405,11 @@ function FeedItem({
   existingGroups,
   onLoadGroups,
   onEdit,
+  unreadCount,
 }: FeedItemProps) {
   const [newGroupInput, setNewGroupInput] = useState('')
   const [showNewGroupInput, setShowNewGroupInput] = useState(false)
+  const [faviconError, setFaviconError] = useState(false)
 
   return (
     <div
@@ -400,14 +419,12 @@ function FeedItem({
       )}
       onClick={onSelect}
     >
-      {feed.favicon ? (
+      {feed.favicon && !faviconError ? (
         <img
           src={feed.favicon}
           alt=""
           className="size-4 rounded-sm object-cover"
-          onError={(e) => {
-            e.currentTarget.style.display = 'none'
-          }}
+          onError={() => setFaviconError(true)}
         />
       ) : (
         <Rss className="size-4 text-muted-foreground" />
@@ -415,6 +432,11 @@ function FeedItem({
       <span className="flex-1 truncate text-sm text-sidebar-foreground">
         {feed.title}
       </span>
+      {unreadCount > 0 && (
+        <span className="ml-auto mr-1 min-w-[1.25rem] rounded-full bg-primary px-1 py-0.5 text-center text-[10px] font-medium leading-none text-primary-foreground">
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </span>
+      )}
       <DropdownMenu onOpenChange={(open) => open && onLoadGroups()}>
         <DropdownMenuTrigger asChild>
           <Button

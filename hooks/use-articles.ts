@@ -1,11 +1,12 @@
 'use client'
 
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import {
   getAllArticles,
   getArticlesByFeed,
   getSavedArticles,
   getUnreadArticles,
+  getUnreadCountsByFeed,
   getArticle,
   markArticleAsRead,
   toggleArticleSaved,
@@ -14,6 +15,7 @@ import {
 import type { Article } from '@/lib/types'
 
 export function useArticles(feedId?: string, hideRead: boolean = false) {
+  const { mutate: globalMutate } = useSWRConfig()
   const key = feedId 
     ? `articles-${feedId}${hideRead ? '-unread' : ''}` 
     : `articles-all${hideRead ? '-unread' : ''}`
@@ -32,6 +34,7 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
   const markAsRead = async (articleId: string) => {
     await markArticleAsRead(articleId)
     await mutate()
+    await globalMutate('unread-counts')
   }
 
   const toggleSaved = async (articleId: string) => {
@@ -91,4 +94,13 @@ export function useArticle(articleId: string | null) {
     error,
     mutate,
   }
+}
+
+export function useUnreadCounts() {
+  const { data: counts } = useSWR<Record<string, number>>(
+    'unread-counts',
+    () => getUnreadCountsByFeed(),
+    { fallbackData: {} }
+  )
+  return counts || {}
 }

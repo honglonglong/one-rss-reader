@@ -174,6 +174,19 @@ export async function cleanupOldReadArticles(): Promise<number> {
   return toDelete.length
 }
 
+// 获取每个订阅的未读文章数量
+export async function getUnreadCountsByFeed(): Promise<Record<string, number>> {
+  const db = await getDB()
+  const articles = await db.getAll('articles')
+  const counts: Record<string, number> = {}
+  for (const a of articles) {
+    if (!a.isRead) {
+      counts[a.feedId] = (counts[a.feedId] || 0) + 1
+    }
+  }
+  return counts
+}
+
 // 获取未读文章
 export async function getUnreadArticles(feedId?: string): Promise<Article[]> {
   const db = await getDB()

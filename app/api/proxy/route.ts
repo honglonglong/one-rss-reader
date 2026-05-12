@@ -39,8 +39,8 @@ export async function POST(request: NextRequest) {
     if (feed.image?.url) {
       favicon = feed.image.url
     } else {
-      // Try to get favicon from site
-      favicon = `https://www.google.com/s2/favicons?domain=${feedUrl.hostname}&sz=64`
+      // Try to get favicon from site using DuckDuckGo's favicon service
+      favicon = `https://icons.duckduckgo.com/ip3/${feedUrl.hostname}.ico`
     }
 
     const result = {
