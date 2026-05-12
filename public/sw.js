@@ -1,0 +1,106 @@
+const CACHE_NAME = 'rss-reader-v1'
+const STATIC_ASSETS = [
+  '/',
+  '/manifest.json',
+]
+
+// Install event - cache static assets
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS)
+    })
+  )
+  self.skipWaiting()
+})
+
+// Activate event - clean up old caches
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      )
+    })
+  )
+  self.clients.claim()
+})
+
+// Fetch event - network first, fallback to cache
+self.addEventListener('fetch', (event) => {
+  const { request } = event
+  const url = new URL(request.url)
+
+  // Skip non-GET requests
+  if (request.method !== 'GET') return
+
+  // Skip cross-origin requests except for RSS proxy
+  if (url.origin !== self.location.origin && !url.pathname.includes('/api/')) {
+    return
+  }
+
+  // For API requests, use network only
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(request).catch(() => {
+        return new Response(JSON.stringify({ error: 'Offline' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      })
+    )
+    return
+  }
+
+  // For page navigations, use network first
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const responseClone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseClone)
+          })
+          return response
+        })
+        .catch(() => {
+          return caches.match(request).then((cachedResponse) => {
+            return cachedResponse || caches.match('/')
+          })
+        })
+    )
+    return
+  }
+
+  // For static assets, use cache first
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) {
+        // Update cache in background
+        fetch(request).then((response) => {
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, response)
+          })
+        })
+        return cachedResponse
+      }
+
+      return fetch(request).then((response) => {
+        const responseClone = response.clone()
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(request, responseClone)
+        })
+        return response
+      })
+    })
+  )
+})
+
+// Listen for messages from the app
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+})
