@@ -10,12 +10,24 @@ import { ArticleReader } from '@/components/article-reader'
 import { HighlightsPanel } from '@/components/highlights-panel'
 import { OfflineIndicator } from '@/components/offline-indicator'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { cleanupOldReadArticles } from '@/lib/db'
 import type { Article } from '@/lib/types'
 
 type View = 'all' | 'feed' | 'saved' | 'highlights'
 
 export default function Home() {
   const isMobile = useIsMobile()
+
+  // Auto-cleanup old read articles once per day
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    if (localStorage.getItem('lastCleanupDate') !== today) {
+      cleanupOldReadArticles().then(() => {
+        localStorage.setItem('lastCleanupDate', today)
+      })
+    }
+  }, [])
+
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null)
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null)
   const [view, setView] = useState<View>('all')

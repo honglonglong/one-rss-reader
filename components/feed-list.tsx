@@ -17,6 +17,8 @@ import {
   FileText,
   StickyNote,
   Pencil,
+  ArrowLeftRight,
+  HelpCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -27,6 +29,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
@@ -57,8 +60,10 @@ import {
 } from '@/components/ui/collapsible'
 import { useFeeds } from '@/hooks/use-feeds'
 import { useUnreadCounts } from '@/hooks/use-articles'
+import { useSync } from '@/hooks/use-sync'
 import { AddFeedDialog } from './add-feed-dialog'
 import { OPMLDialog } from './opml-dialog'
+import { SyncDialog } from './sync-dialog'
 import { getAllGroups } from '@/lib/db'
 import { toast } from 'sonner'
 import type { Feed, FeedGroup } from '@/lib/types'
@@ -73,7 +78,9 @@ interface FeedListProps {
 
 export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelectHighlights, view }: FeedListProps) {
   const { feeds, unsubscribe, refresh, setFeedGroup, editFeed, isLoading } = useFeeds()
+  const { encryptedConfig, isSyncing, lastSyncAt, needsPassphrase, triggerSync, saveConfig, clearConfig } = useSync()
   const unreadCounts = useUnreadCounts()
+  const [helpOpen, setHelpOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -195,6 +202,47 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
               </Button>
             }
           />
+          <SyncDialog
+            trigger={
+              <Button variant="ghost" size="icon" className="size-8" title="数据同步/备份">
+                <ArrowLeftRight className="size-4" />
+              </Button>
+            }
+            onImportDone={() => refresh()}
+            encryptedConfig={encryptedConfig}
+            lastSyncAt={lastSyncAt}
+            isSyncing={isSyncing}
+            needsPassphrase={needsPassphrase}
+            onSaveConfig={saveConfig}
+            onClearConfig={clearConfig}
+            onTriggerSync={triggerSync}
+          />
+          <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8" title="使用说明">
+                <HelpCircle className="size-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>RSS Reader 使用说明</DialogTitle>
+              </DialogHeader>
+              <ul className="space-y-3 text-sm">
+                <li><span className="font-medium">🔒 隐私安全</span><span className="text-muted-foreground"> — 无服务器，所有数据存储在本地浏览器（IndexedDB），完全由你掌控，不上传到任何第三方。</span></li>
+                <li><span className="font-medium">📡 订阅管理</span><span className="text-muted-foreground"> — RSS 图标添加订阅，三点菜单编辑/删除/移入分组，↻ 图标刷新全部订阅。</span></li>
+                <li><span className="font-medium">📖 文章阅读</span><span className="text-muted-foreground"> — 点击文章自动标记已读，眼睛图标切换隐藏/显示已读，列表显示估算阅读时间。</span></li>
+                <li><span className="font-medium">⛶ 全屏阅读</span><span className="text-muted-foreground"> — 阅读器右上角方形按钮可全屏展开，按 ESC 退出。</span></li>
+                <li><span className="font-medium">🔖 收藏</span><span className="text-muted-foreground"> — 书签图标收藏文章，收藏内容离线可读且不自动清理。</span></li>
+                <li><span className="font-medium">✏️ 标记与笔记</span><span className="text-muted-foreground"> — 阅读时选中文字可高亮（5种颜色）或添加笔记，所有标记在「标记与笔记」面板汇总查看。</span></li>
+                <li><span className="font-medium">📄 导出 Markdown</span><span className="text-muted-foreground"> — 阅读器内可将文章（含标注）一键导出为 .md 文件，适合导入 Obsidian 等笔记工具。</span></li>
+                <li><span className="font-medium">⚙️ 阅读设置</span><span className="text-muted-foreground"> — 调整主题（亮色/暗色/米黄）、字体大小、行距、最大阅读宽度。</span></li>
+                <li><span className="font-medium">📋 OPML</span><span className="text-muted-foreground"> — 点击文档图标批量导入/导出订阅列表（.opml 格式）。</span></li>
+                <li><span className="font-medium">☁️ 同步与备份</span><span className="text-muted-foreground"> — 点击 ⇄ 图标下载本地备份 JSON；或配置 GitHub Gist / WebDAV / S3 云同步。云同步为精简模式，只同步最近 90 天的文章状态，保持文件体积小。</span></li>
+                <li><span className="font-medium">📵 离线阅读</span><span className="text-muted-foreground"> — PWA 应用，可安装到主屏幕，已收藏文章支持完全离线访问。</span></li>
+                <li><span className="font-medium">🧹 自动清理</span><span className="text-muted-foreground"> — 30 天前的已读文章每天自动清理；也可点击文章列表右上角垃圾桶立即清理。</span></li>
+              </ul>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

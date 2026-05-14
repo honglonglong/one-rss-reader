@@ -1,5 +1,5 @@
 import type { Feed, Article } from './types'
-import { generateId } from './db'
+import { generateId, stableArticleId } from './db'
 
 export interface ParsedFeed {
   feed: Omit<Feed, 'id' | 'lastUpdated'>
@@ -41,7 +41,7 @@ export function createFeedFromParsed(
   }
 
   const articles: Article[] = parsed.articles.map((item) => ({
-    id: generateId(),
+    id: stableArticleId(item.link || ''),
     feedId,
     feedTitle: feed.title,
     title: item.title || 'Untitled',

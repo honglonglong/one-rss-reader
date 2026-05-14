@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb'
-import type { Feed, Article, Highlight, ReadingSettings, DEFAULT_READING_SETTINGS } from './types'
+import type { Feed, Article, Highlight, ReadingSettings, EncryptedSyncConfig, SyncSnapshot, ImportStats, CloudSyncSnapshot, ArticleState } from './types'
 
 interface RSSReaderDB extends DBSchema {
   feeds: {
@@ -19,12 +19,13 @@ interface RSSReaderDB extends DBSchema {
   }
   settings: {
     key: string
-    value: ReadingSettings
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    value: any
   }
 }
 
 const DB_NAME = 'rss-reader-db'
-const DB_VERSION = 1
+const DB_VERSION = 3
 
 let dbInstance: IDBPDatabase<RSSReaderDB> | null = null
 
@@ -32,7 +33,7 @@ export async function getDB(): Promise<IDBPDatabase<RSSReaderDB>> {
   if (dbInstance) return dbInstance
 
   dbInstance = await openDB<RSSReaderDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    async upgrade(db, oldVersion, _newVersion, transaction) {
       // Feeds store
       if (!db.objectStoreNames.contains('feeds')) {
         const feedStore = db.createObjectStore('feeds', { keyPath: 'id' })
@@ -58,6 +59,29 @@ export async function getDB(): Promise<IDBPDatabase<RSSReaderDB>> {
       // Settings store
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'id' })
+      }
+
+      // v1/v2 → v3: re-key articles to stable link-based IDs, remap highlight articleIds
+      if (oldVersion >= 1 && oldVersion < 3) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const articleStore = (transaction as any).objectStore('articles')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const highlightStore = (transaction as any).objectStore('highlights')
+        const articles: Article[] = await articleStore.getAll()
+        for (const article of articles) {
+          if (!article.link) continue
+          const stableId = stableArticleId(article.link)
+          if (stableId === article.id) continue
+          // Remap all highlights for this article to the new stable ID
+          const highlights: Highlight[] = await highlightStore.index('by-article').getAll(article.id)
+          for (const h of highlights) {
+            await highlightStore.delete(h.id)
+            await highlightStore.put({ ...h, articleId: stableId })
+          }
+          // Replace article record with stable ID
+          await articleStore.delete(article.id)
+          await articleStore.put({ ...article, id: stableId })
+        }
       }
     },
   })
@@ -225,6 +249,7 @@ export async function toggleArticleSaved(id: string): Promise<boolean> {
   const article = await db.get('articles', id)
   if (article) {
     article.isSaved = !article.isSaved
+    article.savedAt = Date.now()
     await db.put('articles', article)
     return article.isSaved
   }
@@ -255,22 +280,26 @@ export async function getHighlight(id: string): Promise<Highlight | undefined> {
 export async function getHighlightsByArticle(articleId: string): Promise<Highlight[]> {
   const db = await getDB()
   const highlights = await db.getAllFromIndex('highlights', 'by-article', articleId)
-  return highlights.sort((a, b) => a.startOffset - b.startOffset)
+  return highlights.filter(h => !h.deletedAt).sort((a, b) => a.startOffset - b.startOffset)
 }
 
 export async function getAllHighlights(): Promise<Highlight[]> {
   const db = await getDB()
-  return db.getAllFromIndex('highlights', 'by-date')
+  const all = await db.getAllFromIndex('highlights', 'by-date')
+  return all.filter(h => !h.deletedAt)
 }
 
 export async function updateHighlight(highlight: Highlight): Promise<void> {
   const db = await getDB()
-  await db.put('highlights', highlight)
+  await db.put('highlights', { ...highlight, updatedAt: Date.now() })
 }
 
 export async function deleteHighlight(id: string): Promise<void> {
   const db = await getDB()
-  await db.delete('highlights', id)
+  const existing = await db.get('highlights', id)
+  if (existing) {
+    await db.put('highlights', { ...existing, deletedAt: Date.now() })
+  }
 }
 
 // Settings operations
@@ -286,10 +315,287 @@ export async function getSettings(): Promise<ReadingSettings> {
 
 export async function saveSettings(settings: ReadingSettings): Promise<void> {
   const db = await getDB()
-  await db.put('settings', { ...settings, id: 'reading' } as ReadingSettings & { id: string })
+  await db.put('settings', { ...settings, id: 'reading' })
+}
+
+export async function getSyncConfig(): Promise<EncryptedSyncConfig | null> {
+  const db = await getDB()
+  const raw = await db.get('settings', 'sync')
+  if (!raw) return null
+  const { id: _id, ...rest } = raw as EncryptedSyncConfig & { id: string }
+  return rest as EncryptedSyncConfig
+}
+
+export async function saveSyncConfig(config: EncryptedSyncConfig): Promise<void> {
+  const db = await getDB()
+  await db.put('settings', { ...config, id: 'sync' })
 }
 
 // Utility to generate unique IDs
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+}
+
+/**
+ * Generate a stable, deterministic article ID from its link URL.
+ * Same URL always produces the same ID on any device — enabling cross-device
+ * highlight linking. Falls back to generateId() for articles with no link.
+ */
+export function stableArticleId(link: string): string {
+  if (!link) return generateId()
+  let h1 = 5381, h2 = 52711
+  for (let i = 0; i < link.length; i++) {
+    const c = link.charCodeAt(i)
+    h1 = Math.imul(31, h1) ^ c
+    h2 = Math.imul(29, h2) ^ c
+  }
+  return `a-${(h1 >>> 0).toString(36)}-${(h2 >>> 0).toString(36)}`
+}
+
+// ── Sync helpers ──────────────────────────────────────────────────────────────
+
+export type { SyncSnapshot, ImportStats, CloudSyncSnapshot, ArticleState } from './types'
+
+/** Dump the entire database to a plain JS object. */
+export async function exportAllData(): Promise<SyncSnapshot> {
+  const db = await getDB()
+  const [feeds, articles, highlights, rawSettings] = await Promise.all([
+    db.getAll('feeds'),
+    db.getAll('articles'),
+    db.getAll('highlights'),
+    db.get('settings', 'reading'),
+  ])
+  return {
+    version: 2,
+    exportedAt: Date.now(),
+    feeds,
+    articles,
+    highlights,
+    settings: rawSettings ?? null,
+  }
+}
+
+/**
+ * Merge a snapshot into the local database.
+ *
+ * Merge rules:
+ * - Feeds     : union; update title/group if remote.lastUpdated is newer.
+ * - Articles  : union; HTML content stripped (state only); isRead = OR; isSaved = LWW via savedAt.
+ * - Highlights: union; LWW via updatedAt/deletedAt (soft-delete tombstones respected).
+ * - Settings  : applied from snapshot.
+ */
+export async function importAllData(snapshot: SyncSnapshot): Promise<ImportStats> {
+  const db = await getDB()
+  const stats: ImportStats = {
+    feedsAdded: 0,
+    feedsUpdated: 0,
+    articlesAdded: 0,
+    articlesUpdated: 0,
+    highlightsAdded: 0,
+    highlightsUpdated: 0,
+  }
+
+  // ── Feeds ──────────────────────────────────────────────────────────────────
+  const localFeeds = await db.getAll('feeds')
+  const localFeedByUrl = new Map(localFeeds.map((f) => [f.url, f]))
+  const localFeedById = new Map(localFeeds.map((f) => [f.id, f]))
+
+  const feedTx = db.transaction('feeds', 'readwrite')
+  for (const remote of snapshot.feeds) {
+    const existing = localFeedByUrl.get(remote.url) ?? localFeedById.get(remote.id)
+    if (!existing) {
+      await feedTx.store.put(remote)
+      stats.feedsAdded++
+    } else if (remote.lastUpdated > existing.lastUpdated) {
+      // Keep local id; update metadata from remote
+      await feedTx.store.put({ ...remote, id: existing.id })
+      stats.feedsUpdated++
+    }
+  }
+  await feedTx.done
+
+  // ── Articles ───────────────────────────────────────────────────────────────
+  const localArticles = await db.getAll('articles')
+  const localArticleById = new Map(localArticles.map((a) => [a.id, a]))
+
+  const articleTx = db.transaction('articles', 'readwrite')
+  for (const remote of snapshot.articles) {
+    const local = localArticleById.get(remote.id)
+    // Strip HTML content — state fields only, consistent with cloud sync
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { content: _content, ...remoteState } = remote
+    if (!local) {
+      await articleTx.store.put({ ...remoteState, content: '' })
+      stats.articlesAdded++
+    } else {
+      const remoteSavedAt = remote.savedAt ?? 0
+      const localSavedAt = local.savedAt ?? 0
+      const merged: Article = {
+        ...local, // keep local HTML content
+        isRead: local.isRead || remote.isRead,
+        isSaved: remoteSavedAt > localSavedAt ? remote.isSaved : local.isSaved,
+        savedAt: Math.max(localSavedAt, remoteSavedAt) || undefined,
+        readAt: local.readAt ?? remote.readAt,
+      }
+      await articleTx.store.put(merged)
+      stats.articlesUpdated++
+    }
+  }
+  await articleTx.done
+
+  // ── Highlights ─────────────────────────────────────────────────────────────
+  const localHighlights = await db.getAll('highlights')
+  const localHighlightById = new Map(localHighlights.map((h) => [h.id, h]))
+
+  const hlTx = db.transaction('highlights', 'readwrite')
+  for (const remote of snapshot.highlights) {
+    const local = localHighlightById.get(remote.id)
+    // Use deletedAt as effective timestamp for tombstone LWW
+    const remoteTs = remote.updatedAt ?? remote.deletedAt ?? remote.createdAt
+    if (!local) {
+      if (remote.deletedAt) continue // tombstone for non-existent local highlight — skip
+      await hlTx.store.put(remote)
+      stats.highlightsAdded++
+    } else {
+      // LWW: compare updatedAt/deletedAt, fall back to createdAt
+      const localTs = local.updatedAt ?? local.deletedAt ?? local.createdAt
+      if (remoteTs > localTs) {
+        await hlTx.store.put(remote)
+        if (!remote.deletedAt) stats.highlightsUpdated++
+      }
+    }
+  }
+  await hlTx.done
+
+  // ── Settings ───────────────────────────────────────────────────────────────
+  if (snapshot.settings) {
+    await db.put('settings', { ...snapshot.settings, id: 'reading' })
+  }
+
+  return stats
+}
+
+/**
+ * Build a slim snapshot for cloud sync: article HTML content is stripped so
+ * the payload stays small (~KB instead of potentially ~MB).
+ * Feeds and highlights are included in full.
+ */
+export async function exportCloudData(): Promise<CloudSyncSnapshot> {
+  const db = await getDB()
+  const [feeds, articles, highlights, rawSettings] = await Promise.all([
+    db.getAll('feeds'),
+    db.getAll('articles'),
+    db.getAll('highlights'),
+    db.get('settings', 'reading'),
+  ])
+  // Only sync article states from the last 90 days (or saved articles) to keep
+  // the cloud snapshot small regardless of how long the user has been using the app.
+  const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000
+  const articleStates: ArticleState[] = articles
+    .filter((a) => a.isSaved || a.pubDate > ninetyDaysAgo)
+    .map((a) => ({
+    id: a.id,
+    feedId: a.feedId,
+    feedTitle: a.feedTitle,
+    title: a.title,
+    link: a.link,
+    pubDate: a.pubDate,
+    isRead: a.isRead,
+    isSaved: a.isSaved,
+    cachedAt: a.cachedAt,
+    readAt: a.readAt,
+    savedAt: a.savedAt,
+  }))
+  return {
+    version: 2,
+    exportedAt: Date.now(),
+    feeds,
+    articleStates,
+    highlights,
+    settings: rawSettings ?? null,
+  }
+}
+
+/**
+ * Merge a CloudSyncSnapshot (state-only) into the local database.
+ *
+ * Article merge note: only existing local articles are updated. Articles that
+ * exist in the remote state but not locally are skipped — they will be picked
+ * up correctly after the next feed refresh + sync cycle.
+ */
+export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<ImportStats> {
+  const db = await getDB()
+  const stats: ImportStats = {
+    feedsAdded: 0,
+    feedsUpdated: 0,
+    articlesAdded: 0,
+    articlesUpdated: 0,
+    highlightsAdded: 0,
+    highlightsUpdated: 0,
+  }
+
+  // ── Feeds (same logic as importAllData) ────────────────────────────────────
+  const localFeeds = await db.getAll('feeds')
+  const localFeedByUrl = new Map(localFeeds.map((f) => [f.url, f]))
+  const localFeedById = new Map(localFeeds.map((f) => [f.id, f]))
+
+  const feedTx = db.transaction('feeds', 'readwrite')
+  for (const remote of snapshot.feeds) {
+    const existing = localFeedByUrl.get(remote.url) ?? localFeedById.get(remote.id)
+    if (!existing) {
+      await feedTx.store.put(remote)
+      stats.feedsAdded++
+    } else if (remote.lastUpdated > existing.lastUpdated) {
+      await feedTx.store.put({ ...remote, id: existing.id })
+      stats.feedsUpdated++
+    }
+  }
+  await feedTx.done
+
+  // ── Article states (only update existing local records) ────────────────────
+  const localArticles = await db.getAll('articles')
+  const localArticleById = new Map(localArticles.map((a) => [a.id, a]))
+
+  const articleTx = db.transaction('articles', 'readwrite')
+  for (const remote of (snapshot.articleStates ?? [])) {
+    const local = localArticleById.get(remote.id)
+    if (!local) continue // article not cached locally yet; skip until next refresh
+    const remoteSavedAt = remote.savedAt ?? 0
+    const localSavedAt = local.savedAt ?? 0
+    const merged: Article = {
+      ...local, // keep local content intact
+      isRead: local.isRead || remote.isRead,
+      isSaved: remoteSavedAt > localSavedAt ? remote.isSaved : local.isSaved,
+      savedAt: Math.max(localSavedAt, remoteSavedAt) || undefined,
+      readAt: local.readAt ?? remote.readAt,
+    }
+    await articleTx.store.put(merged)
+    stats.articlesUpdated++
+  }
+  await articleTx.done
+
+  // ── Highlights (same logic as importAllData) ────────────────────────────────
+  const localHighlights = await db.getAll('highlights')
+  const localHighlightById = new Map(localHighlights.map((h) => [h.id, h]))
+
+  const hlTx = db.transaction('highlights', 'readwrite')
+  for (const remote of snapshot.highlights) {
+    const local = localHighlightById.get(remote.id)
+    const remoteTs = remote.updatedAt ?? remote.deletedAt ?? remote.createdAt
+    if (!local) {
+      if (remote.deletedAt) continue // tombstone for non-existent local highlight — skip
+      await hlTx.store.put(remote)
+      stats.highlightsAdded++
+    } else {
+      // LWW: compare updatedAt/deletedAt, fall back to createdAt
+      const localTs = local.updatedAt ?? local.deletedAt ?? local.createdAt
+      if (remoteTs > localTs) {
+        await hlTx.store.put(remote)
+        if (!remote.deletedAt) stats.highlightsUpdated++
+      }
+    }
+  }
+  await hlTx.done
+
+  return stats
 }

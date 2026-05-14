@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { Bookmark, BookmarkCheck, Loader2, Eye, EyeOff, Trash2, HardDriveDownload } from 'lucide-react'
@@ -27,9 +27,17 @@ interface ArticleListProps {
   onSelectArticle: (article: Article) => void
 }
 
+const PAGE_SIZE = 50
+
 export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }: ArticleListProps) {
   const { settings, updateSettings } = useReadingSettings()
   const hideRead = view === 'saved' ? false : (settings.hideRead ?? false)
+  const [displayLimit, setDisplayLimit] = useState(PAGE_SIZE)
+
+  // Reset pagination when switching feeds or views
+  useEffect(() => {
+    setDisplayLimit(PAGE_SIZE)
+  }, [feedId, view])
   
   const {
     articles: feedArticles,
@@ -140,7 +148,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
       />
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col">
-          {articles.map((article) => (
+          {articles.slice(0, displayLimit).map((article) => (
             <ArticleItem
               key={article.id}
               article={article}
@@ -149,6 +157,17 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
               onToggleSaved={(e) => handleToggleSaved(e, article.id)}
             />
           ))}
+          {articles.length > displayLimit && (
+            <div className="flex justify-center py-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDisplayLimit((d) => d + PAGE_SIZE)}
+              >
+                加载更多（还有 {articles.length - displayLimit} 篇）
+              </Button>
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>

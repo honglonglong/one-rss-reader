@@ -30,7 +30,12 @@ export function useServiceWorker() {
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').then((registration) => {
+      // Include the build timestamp in the SW URL. The browser fetches the SW
+      // on every registration call and compares content byte-for-byte, but
+      // using a versioned URL also forces a network fetch (no cache hit) so
+      // deployments are reliably detected even behind aggressive CDN caches.
+      const swUrl = `/sw.js?v=${process.env.NEXT_PUBLIC_BUILD_TIME ?? '1'}`
+      navigator.serviceWorker.register(swUrl).then((registration) => {
         setIsReady(true)
 
         registration.addEventListener('updatefound', () => {

@@ -31,7 +31,8 @@ export interface Article {
   isRead: boolean
   isSaved: boolean
   cachedAt: number
-  readAt?: number // 阅读时间戳，用于30天后自动删除
+  readAt?: number  // 阅读时间戳，用于30天后自动删除
+  savedAt?: number // 收藏时间戳，用于 LWW 冲突解决
 }
 
 export interface Highlight {
@@ -44,6 +45,8 @@ export interface Highlight {
   endOffset: number
   containerSelector: string
   createdAt: number
+  updatedAt?: number // 最后编辑时间戳，用于 LWW 冲突解决
+  deletedAt?: number // 软删除时间戳；有值则视为已删除（导入时不恢复）
 }
 
 export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
@@ -83,4 +86,103 @@ export interface ExportedNote {
     color: HighlightColor
     note?: string
   }[]
+}
+
+// ── Sync types ────────────────────────────────────────────────────────────────
+
+export type SyncProviderType = 'github-gist' | 'webdav' | 'cloudflare-r2' | 'aws-s3'
+
+export interface GistSyncConfig {
+  type: 'github-gist'
+  token: string
+  gistId?: string
+}
+
+export interface WebDAVSyncConfig {
+  type: 'webdav'
+  url: string
+  username: string
+  password: string
+  path?: string // default: rss-reader-sync.json
+}
+
+export interface R2SyncConfig {
+  type: 'cloudflare-r2'
+  accountId: string
+  accessKeyId: string
+  secretAccessKey: string
+  bucket: string
+  path?: string // default: rss-reader-sync.json
+}
+
+export interface S3SyncConfig {
+  type: 'aws-s3'
+  region: string
+  accessKeyId: string
+  secretAccessKey: string
+  bucket: string
+  path?: string // default: rss-reader-sync.json
+}
+
+export type SyncConfig = GistSyncConfig | WebDAVSyncConfig | R2SyncConfig | S3SyncConfig
+
+/** Stored in IndexedDB settings store under key "sync". */
+export interface EncryptedSyncConfig {
+  provider: SyncProviderType
+  /**
+   * true  → encrypted field is AES-GCM ciphertext; salt & iv are populated.
+   * false → encrypted field is plain JSON string; no passphrase needed.
+   */
+  isEncrypted: boolean
+  encrypted: string // base64 AES-GCM ciphertext, OR plain JSON when !isEncrypted
+  salt: string      // base64 PBKDF2 salt  (empty string when !isEncrypted)
+  iv: string        // base64 AES-GCM IV   (empty string when !isEncrypted)
+  lastSyncAt?: number
+  gistId?: string   // plaintext convenience copy (not sensitive)
+}
+
+export interface SyncSnapshot {
+  version: 2
+  exportedAt: number
+  feeds: Feed[]
+  articles: Article[]
+  highlights: Highlight[]
+  settings: ReadingSettings | null
+}
+
+/**
+ * Slim snapshot used for cloud sync — article HTML content is stripped to
+ * keep the payload small (~KB instead of potentially ~MB).
+ * The receiving device merges state fields only; content is re-fetched via RSS.
+ */
+export interface ArticleState {
+  id: string
+  feedId: string
+  feedTitle: string
+  title: string
+  link: string
+  pubDate: number
+  isRead: boolean
+  isSaved: boolean
+  cachedAt: number
+  readAt?: number
+  savedAt?: number
+}
+
+export interface CloudSyncSnapshot {
+  version: 2
+  exportedAt: number
+  feeds: Feed[]
+  articleStates: ArticleState[]
+  highlights: Highlight[]
+  settings: ReadingSettings | null
+}
+
+export interface ImportStats {
+  feedsAdded: number
+  feedsUpdated: number
+  articlesAdded: number
+  articlesUpdated: number
+  highlightsAdded: number
+  highlightsUpdated: number
 }

@@ -1,4 +1,8 @@
-const CACHE_NAME = 'rss-reader-v1'
+// Derive cache name from the build version baked into this SW's URL (?v=...).
+// On every new deploy the URL changes, so the browser installs a new SW and
+// the activate event below cleans up any stale caches from previous versions.
+const _buildVersion = new URL(self.location.href).searchParams.get('v') || '1'
+const CACHE_NAME = `rss-reader-${_buildVersion}`
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
