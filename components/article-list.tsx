@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { Bookmark, BookmarkCheck, Loader2, Eye, EyeOff, Trash2, HardDriveDownload } from 'lucide-react'
+import { Bookmark, BookmarkCheck, Loader2, Eye, EyeOff, Trash2, HardDriveDownload, CheckCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -45,6 +45,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
     markAsRead,
     toggleSaved: toggleFeedSaved,
     cleanup,
+    markAllAsRead,
     mutate: mutateFeedArticles,
   } = useArticles(view === 'feed' ? feedId || undefined : undefined, hideRead)
   
@@ -87,6 +88,15 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
       toast.success(`已清理 ${count} 篇30天前的已读文章`)
     } else {
       toast.info('没有需要清理的文章')
+    }
+  }
+
+  const handleMarkAllRead = async () => {
+    const count = await markAllAsRead()
+    if (count > 0) {
+      toast.success(`已将 ${count} 篇文章标记为已读`)
+    } else {
+      toast.info('没有未读文章')
     }
   }
 
@@ -145,6 +155,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
         onToggleHideRead={handleToggleHideRead}
         showHideReadToggle={showHideReadToggle}
         onCleanup={handleCleanup}
+        onMarkAllRead={view === 'feed' ? handleMarkAllRead : undefined}
       />
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col">
@@ -183,6 +194,7 @@ interface ArticleListHeaderProps {
   onToggleHideRead: () => void
   showHideReadToggle: boolean
   onCleanup: () => void
+  onMarkAllRead?: () => void
 }
 
 function ArticleListHeader({
@@ -194,6 +206,7 @@ function ArticleListHeader({
   onToggleHideRead,
   showHideReadToggle,
   onCleanup,
+  onMarkAllRead,
 }: ArticleListHeaderProps) {
   return (
     <div className="border-b border-border p-4">
@@ -209,6 +222,25 @@ function ArticleListHeader({
         </div>
         {showHideReadToggle && (
           <div className="flex items-center gap-1">
+            {onMarkAllRead && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      onClick={onMarkAllRead}
+                    >
+                      <CheckCheck className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>全部标记为已读</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

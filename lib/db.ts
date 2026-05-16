@@ -182,6 +182,20 @@ export async function markArticleAsRead(id: string): Promise<void> {
   }
 }
 
+export async function markAllArticlesAsRead(feedId?: string): Promise<number> {
+  const db = await getDB()
+  const now = Date.now()
+  const articles = feedId
+    ? await db.getAllFromIndex('articles', 'by-feed', feedId)
+    : await db.getAll('articles')
+  const unread = articles.filter((a) => !a.isRead)
+  if (unread.length === 0) return 0
+  const tx = db.transaction('articles', 'readwrite')
+  await Promise.all(unread.map((a) => tx.store.put({ ...a, isRead: true, readAt: now })))
+  await tx.done
+  return unread.length
+}
+
 // 清理30天前已读的文章（保留收藏的）
 export async function cleanupOldReadArticles(): Promise<number> {
   const db = await getDB()

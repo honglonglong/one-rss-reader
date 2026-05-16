@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Rss,
   Trash2,
@@ -53,6 +53,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Separator } from '@/components/ui/separator'
 import {
   Collapsible,
   CollapsibleContent,
@@ -83,7 +84,8 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   const [helpOpen, setHelpOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshingFeedIds, setRefreshingFeedIds] = useState<Set<string>>(new Set())
+  const isRefreshing = refreshingFeedIds.size > 0
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['__ungrouped__']))
   const [existingGroups, setExistingGroups] = useState<string[]>([])
 
@@ -120,15 +122,55 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   }, [feeds])
 
   const handleRefresh = async () => {
-    setIsRefreshing(true)
-    try {
-      await refresh()
-      toast.success('已刷新所有订阅')
-    } catch (error) {
-      toast.error('刷新失败')
-    } finally {
-      setIsRefreshing(false)
+    const feedsSnapshot = [...feeds]
+    if (feedsSnapshot.length === 0) return
+    const queue = [...feedsSnapshot]
+    const worker = async () => {
+      while (queue.length > 0) {
+        const feed = queue.shift()!
+        setRefreshingFeedIds((prev) => new Set([...prev, feed.id]))
+        try {
+          await refresh(feed.id)
+        } finally {
+          setRefreshingFeedIds((prev) => {
+            const next = new Set(prev)
+            next.delete(feed.id)
+            return next
+          })
+        }
+      }
     }
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(5, feedsSnapshot.length) }, () => worker())
+      )
+      toast.success('已刷新所有订阅')
+    } catch {
+      toast.error('刷新失败')
+    }
+  }
+
+  const handleRefreshRef = useRef<() => Promise<void>>(handleRefresh)
+  handleRefreshRef.current = handleRefresh
+
+  useEffect(() => {
+    const id = setInterval(() => { handleRefreshRef.current() }, 3_600_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const handleSelectFeedItem = (feedId: string) => {
+    onSelectFeed(feedId)
+    setRefreshingFeedIds((prev) => new Set([...prev, feedId]))
+    refresh(feedId)
+      .then(() => toast.success('已刷新'))
+      .catch(() => toast.error('刷新失败'))
+      .finally(() =>
+        setRefreshingFeedIds((prev) => {
+          const next = new Set(prev)
+          next.delete(feedId)
+          return next
+        })
+      )
   }
 
   const handleDelete = async () => {
@@ -225,22 +267,93 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
             </DialogTrigger>
             <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>RSS Reader 使用说明</DialogTitle>
+                <DialogTitle>One RSS Reader 使用说明</DialogTitle>
               </DialogHeader>
-              <ul className="space-y-3 text-sm">
-                <li><span className="font-medium">🔒 隐私安全</span><span className="text-muted-foreground"> — 无服务器，所有数据存储在本地浏览器（IndexedDB），完全由你掌控，不上传到任何第三方。</span></li>
-                <li><span className="font-medium">📡 订阅管理</span><span className="text-muted-foreground"> — RSS 图标添加订阅，三点菜单编辑/删除/移入分组，↻ 图标刷新全部订阅。</span></li>
-                <li><span className="font-medium">📖 文章阅读</span><span className="text-muted-foreground"> — 点击文章自动标记已读，眼睛图标切换隐藏/显示已读，列表显示估算阅读时间。</span></li>
-                <li><span className="font-medium">⛶ 全屏阅读</span><span className="text-muted-foreground"> — 阅读器右上角方形按钮可全屏展开，按 ESC 退出。</span></li>
-                <li><span className="font-medium">🔖 收藏</span><span className="text-muted-foreground"> — 书签图标收藏文章，收藏内容离线可读且不自动清理。</span></li>
-                <li><span className="font-medium">✏️ 标记与笔记</span><span className="text-muted-foreground"> — 阅读时选中文字可高亮（5种颜色）或添加笔记，所有标记在「标记与笔记」面板汇总查看。</span></li>
-                <li><span className="font-medium">📄 导出 Markdown</span><span className="text-muted-foreground"> — 阅读器内可将文章（含标注）一键导出为 .md 文件，适合导入 Obsidian 等笔记工具。</span></li>
-                <li><span className="font-medium">⚙️ 阅读设置</span><span className="text-muted-foreground"> — 调整主题（亮色/暗色/米黄）、字体大小、行距、最大阅读宽度。</span></li>
-                <li><span className="font-medium">📋 OPML</span><span className="text-muted-foreground"> — 点击文档图标批量导入/导出订阅列表（.opml 格式）。</span></li>
-                <li><span className="font-medium">☁️ 同步与备份</span><span className="text-muted-foreground"> — 点击 ⇄ 图标下载本地备份 JSON；或配置 GitHub Gist / WebDAV / S3 云同步。云同步为精简模式，只同步最近 90 天的文章状态，保持文件体积小。</span></li>
-                <li><span className="font-medium">📵 离线阅读</span><span className="text-muted-foreground"> — PWA 应用，可安装到主屏幕，已收藏文章支持完全离线访问。</span></li>
-                <li><span className="font-medium">🧹 自动清理</span><span className="text-muted-foreground"> — 30 天前的已读文章每天自动清理；也可点击文章列表右上角垃圾桶立即清理。</span></li>
-              </ul>
+              <div className="space-y-4 text-sm">
+
+                {/* 订阅管理 */}
+                <div>
+                  <p className="text-lg font-semibold mb-2">📥订阅管理</p>
+                  <ul className="space-y-2">
+                    <li className="pl-6">
+                      <p className="font-medium">添加与管理订阅</p>
+                      <p className="text-xs text-muted-foreground">RSS 图标添加订阅，三点菜单编辑 / 删除 / 移入分组，↻ 图标刷新全部订阅。</p>
+                    </li>
+                    <li className="pl-6">
+                      <p className="font-medium">OPML 导入 / 导出</p>
+                      <p className="text-xs text-muted-foreground">点击文档图标批量导入或导出订阅列表（.opml 格式），方便迁移与备份。</p>
+                    </li>
+                  </ul>
+                </div>
+
+                <Separator />
+
+                {/* 阅读体验 */}
+                <div>
+                  <p className="text-lg font-semibold mb-2">📖阅读体验</p>
+                  <ul className="space-y-2">
+                    <li className="pl-6">
+                      <p className="font-medium">文章阅读</p>
+                      <p className="text-xs text-muted-foreground">点击文章自动标记已读，眼睛图标切换隐藏 / 显示已读，列表显示估算阅读时间。</p>
+                    </li>
+                    <li className="pl-6">
+                      <p className="font-medium">全屏阅读</p>
+                      <p className="text-xs text-muted-foreground">阅读器右上角方形按钮可全屏展开，按 ESC 退出。</p>
+                    </li>
+                    <li className="pl-6">
+                      <p className="font-medium">收藏</p>
+                      <p className="text-xs text-muted-foreground">书签图标收藏文章，收藏内容离线可读且不自动清理。</p>
+                    </li>
+                    <li className="pl-6">
+                      <p className="font-medium">阅读设置</p>
+                      <p className="text-xs text-muted-foreground">调整主题（亮色 / 暗色 / 米黄）、字体大小、行距、最大阅读宽度。</p>
+                    </li>
+                  </ul>
+                </div>
+
+                <Separator />
+
+                {/* 标注与导出 */}
+                <div>
+                  <p className="text-lg font-semibold mb-2">✏️标注与导出</p>
+                  <ul className="space-y-2">
+                    <li className="pl-6">
+                      <p className="font-medium">标记与笔记</p>
+                      <p className="text-xs text-muted-foreground">阅读时选中文字可高亮（5 种颜色）或添加笔记，所有标记在「标记与笔记」面板汇总查看。</p>
+                    </li>
+                    <li className="pl-6">
+                      <p className="font-medium">导出 Markdown</p>
+                      <p className="text-xs text-muted-foreground">阅读器内可将文章（含标注）一键导出为 .md 文件，适合导入 Obsidian 等笔记工具。</p>
+                    </li>
+                  </ul>
+                </div>
+
+                <Separator />
+
+                {/* 数据与同步 */}
+                <div>
+                  <p className="text-lg font-semibold mb-2">☁️数据与同步</p>
+                  <ul className="space-y-2">
+                    <li className="pl-6">
+                      <p className="font-medium">隐私安全</p>
+                      <p className="text-xs text-muted-foreground">无服务器，所有数据存储在本地浏览器（IndexedDB），完全由你掌控，不上传到任何第三方。</p>
+                    </li>
+                    <li className="pl-6">
+                      <p className="font-medium">同步与备份</p>
+                      <p className="text-xs text-muted-foreground">点击 ⇄ 图标下载本地备份 JSON；或配置 GitHub Gist / WebDAV / S3 云同步。云同步为精简模式，只同步最近 90 天的文章状态，保持文件体积小。</p>
+                    </li>
+                    <li className="pl-6">
+                      <p className="font-medium">离线阅读</p>
+                      <p className="text-xs text-muted-foreground">PWA 应用，可安装到主屏幕，已收藏文章支持完全离线访问。</p>
+                    </li>
+                    <li className="pl-6">
+                      <p className="font-medium">自动清理</p>
+                      <p className="text-xs text-muted-foreground">30 天前的已读文章每天自动清理；也可点击文章列表右上角垃圾桶立即清理。</p>
+                    </li>
+                  </ul>
+                </div>
+
+              </div>
             </DialogContent>
           </Dialog>
         </div>
@@ -292,13 +405,14 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
                   onToggle={() => toggleGroup(group.name)}
                   selectedFeedId={selectedFeedId}
                   view={view}
-                  onSelectFeed={onSelectFeed}
+                  onSelectFeed={handleSelectFeedItem}
                   onDelete={setDeleteTarget}
                   onMoveToGroup={handleMoveToGroup}
                   existingGroups={existingGroups}
                   onLoadGroups={loadGroups}
                   onEdit={setEditTarget}
                   unreadCounts={unreadCounts}
+                  refreshingFeedIds={refreshingFeedIds}
                 />
               ))}
             </div>
@@ -346,6 +460,7 @@ interface FeedGroupItemProps {
   onLoadGroups: () => void
   onEdit: (feed: Feed) => void
   unreadCounts: Record<string, number>
+  refreshingFeedIds: Set<string>
 }
 
 function FeedGroupItem({
@@ -361,6 +476,7 @@ function FeedGroupItem({
   onLoadGroups,
   onEdit,
   unreadCounts,
+  refreshingFeedIds,
 }: FeedGroupItemProps) {
   const isUngrouped = group.name === '__ungrouped__'
 
@@ -377,6 +493,7 @@ function FeedGroupItem({
             onMoveToGroup={(g) => onMoveToGroup(feed, g)}
             existingGroups={existingGroups}
             onLoadGroups={onLoadGroups}              onEdit={() => onEdit(feed)}          unreadCount={unreadCounts[feed.id] || 0}
+            isRefreshing={refreshingFeedIds.has(feed.id)}
           />
         ))}
       </>
@@ -424,6 +541,7 @@ function FeedGroupItem({
               onLoadGroups={onLoadGroups}
               onEdit={() => onEdit(feed)}
               unreadCount={unreadCounts[feed.id] || 0}
+              isRefreshing={refreshingFeedIds.has(feed.id)}
             />
           ))}
         </div>
@@ -442,6 +560,7 @@ interface FeedItemProps {
   onLoadGroups: () => void
   onEdit: () => void
   unreadCount: number
+  isRefreshing?: boolean
 }
 
 function FeedItem({
@@ -454,6 +573,7 @@ function FeedItem({
   onLoadGroups,
   onEdit,
   unreadCount,
+  isRefreshing,
 }: FeedItemProps) {
   const [newGroupInput, setNewGroupInput] = useState('')
   const [showNewGroupInput, setShowNewGroupInput] = useState(false)
@@ -467,15 +587,17 @@ function FeedItem({
       )}
       onClick={onSelect}
     >
-      {feed.favicon && !faviconError ? (
+      {isRefreshing ? (
+        <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+      ) : feed.favicon && !faviconError ? (
         <img
           src={feed.favicon}
           alt=""
-          className="size-4 rounded-sm object-cover"
+          className="size-4 rounded-sm object-cover shrink-0"
           onError={() => setFaviconError(true)}
         />
       ) : (
-        <Rss className="size-4 text-muted-foreground" />
+        <Rss className="size-4 text-muted-foreground shrink-0" />
       )}
       <span className="flex-1 truncate text-sm text-sidebar-foreground">
         {feed.title}
@@ -490,7 +612,7 @@ function FeedItem({
           <Button
             variant="ghost"
             size="icon"
-            className="size-6 opacity-0 group-hover:opacity-100"
+            className="size-6 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             <MoreHorizontal className="size-3" />

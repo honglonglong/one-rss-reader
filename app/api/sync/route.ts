@@ -83,7 +83,7 @@ async function handleGist(op: Operation, config: Extract<SyncConfig, { type: 'gi
 
   // First upload — create a new private gist
   const res = await gistRequest('POST', '/gists', config.token, {
-    description: 'RSS Reader Sync',
+    description: 'One RSS Reader Sync',
     public: false,
     files: { [GIST_FILENAME]: { content } },
   })

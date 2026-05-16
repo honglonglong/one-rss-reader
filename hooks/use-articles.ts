@@ -9,6 +9,7 @@ import {
   getUnreadCountsByFeed,
   getArticle,
   markArticleAsRead,
+  markAllArticlesAsRead,
   toggleArticleSaved,
   cleanupOldReadArticles,
 } from '@/lib/db'
@@ -33,7 +34,12 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
 
   const markAsRead = async (articleId: string) => {
     await markArticleAsRead(articleId)
-    await mutate()
+    mutate(
+      (current) => current?.map(a =>
+        a.id === articleId ? { ...a, isRead: true, readAt: new Date() } : a
+      ),
+      { revalidate: false }
+    )
     await globalMutate('unread-counts')
   }
 
@@ -49,6 +55,13 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
     return count
   }
 
+  const markAllAsRead = async () => {
+    const count = await markAllArticlesAsRead(feedId)
+    await mutate()
+    await globalMutate('unread-counts')
+    return count
+  }
+
   return {
     articles: articles || [],
     isLoading,
@@ -56,6 +69,7 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
     markAsRead,
     toggleSaved,
     cleanup,
+    markAllAsRead,
     mutate,
   }
 }

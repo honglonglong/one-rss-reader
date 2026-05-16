@@ -20,13 +20,13 @@ const notoSerifSC = Noto_Serif_SC({
 })
 
 export const metadata: Metadata = {
-  title: 'RSS Reader - 离线阅读器',
+  title: 'One RSS Reader - 一个RSS阅读器',
   description: '一个支持离线阅读、高亮批注、Markdown 导出的 RSS 阅读器',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'RSS Reader',
+    title: 'One RSS Reader',
   },
   icons: {
     icon: '/icons/icon-512.jpg',

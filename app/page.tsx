@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,11 @@ import { OfflineIndicator } from '@/components/offline-indicator'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cleanupOldReadArticles } from '@/lib/db'
 import type { Article } from '@/lib/types'
+
+const FEED_LIST_WIDTH_KEY = 'feedListWidth'
+const FEED_LIST_MIN_WIDTH = 160
+const FEED_LIST_MAX_WIDTH = 480
+const FEED_LIST_DEFAULT_WIDTH = 240
 
 type View = 'all' | 'feed' | 'saved' | 'highlights'
 
@@ -33,6 +38,19 @@ export default function Home() {
   const [view, setView] = useState<View>('all')
   const [showSidebar, setShowSidebar] = useState(false)
   const [isReaderExpanded, setIsReaderExpanded] = useState(false)
+  const [feedListWidth, setFeedListWidth] = useState<number>(FEED_LIST_DEFAULT_WIDTH)
+  const isResizingRef = useRef(false)
+  const startXRef = useRef(0)
+  const startWidthRef = useRef(0)
+
+  // Restore persisted width after mount to avoid SSR/client hydration mismatch
+  useEffect(() => {
+    const saved = localStorage.getItem(FEED_LIST_WIDTH_KEY)
+    if (saved) {
+      const parsed = parseInt(saved, 10)
+      if (!isNaN(parsed)) setFeedListWidth(parsed)
+    }
+  }, [])
 
   // Reset mobile sidebar when switching views
   useEffect(() => {
@@ -51,6 +69,37 @@ export default function Home() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isReaderExpanded])
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizingRef.current = true
+    startXRef.current = e.clientX
+    startWidthRef.current = feedListWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current) return
+      const delta = e.clientX - startXRef.current
+      const newWidth = Math.min(FEED_LIST_MAX_WIDTH, Math.max(FEED_LIST_MIN_WIDTH, startWidthRef.current + delta))
+      setFeedListWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      isResizingRef.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      setFeedListWidth(w => {
+        localStorage.setItem(FEED_LIST_WIDTH_KEY, String(w))
+        return w
+      })
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }, [feedListWidth])
 
   const handleSelectFeed = (feedId: string | null) => {
     setSelectedFeedId(feedId)
@@ -101,7 +150,7 @@ export default function Home() {
             >
               {showSidebar ? <X className="size-5" /> : <Menu className="size-5" />}
             </Button>
-            <h1 className="font-semibold">RSS Reader</h1>
+            <h1 className="font-semibold">One RSS Reader</h1>
           </div>
         </header>
 
@@ -166,9 +215,10 @@ export default function Home() {
       {/* Sidebar - feeds */}
       <div
         className={cn(
-          'h-full shrink-0 transition-all duration-300 overflow-hidden',
-          isReaderExpanded ? 'w-0' : 'w-60'
+          'h-full shrink-0 transition-[width] duration-300 overflow-hidden',
+          isReaderExpanded ? 'w-0' : ''
         )}
+        style={isReaderExpanded ? undefined : { width: feedListWidth }}
       >
         <FeedList
           selectedFeedId={selectedFeedId}
@@ -178,6 +228,14 @@ export default function Home() {
           view={view}
         />
       </div>
+
+      {/* Resize handle */}
+      {!isReaderExpanded && (
+        <div
+          className="h-full w-1 shrink-0 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+          onMouseDown={handleResizeStart}
+        />
+      )}
 
       {/* Middle - article list */}
       <div
