@@ -10,6 +10,7 @@ export interface Feed {
   lastUpdated: number
   category?: string
   group?: string // 分组名称
+  deletedAt?: number // 软删除时间戳；有值则视为已删除（同步时作为 tombstone 传播）
 }
 
 export interface FeedGroup {

@@ -1,12 +1,16 @@
 'use client'
 
-import useSWR from 'swr'
+import useSWR, { mutate as globalMutate } from 'swr'
 import {
   getHighlightsByArticle,
   getAllHighlights,
   addHighlight,
   updateHighlight,
   deleteHighlight,
+  getDeletedHighlights,
+  restoreHighlight,
+  permanentlyDeleteHighlight,
+  emptyTrash,
   generateId,
   getArticle,
 } from '@/lib/db'
@@ -121,5 +125,44 @@ export function useAllHighlightsWithArticles() {
     mutate,
     editHighlight,
     removeHighlight,
+  }
+}
+
+export function useTrashHighlights() {
+  const { data, error, isLoading, mutate } = useSWR<HighlightWithArticle[]>(
+    'highlights-trash',
+    async () => {
+      const highlights = await getDeletedHighlights()
+      const articleIds = [...new Set(highlights.map((h) => h.articleId))]
+      const articles = await Promise.all(articleIds.map((id) => getArticle(id)))
+      const articleMap = new Map(articles.filter(Boolean).map((a) => [a!.id, a!]))
+      return highlights.map((h) => ({ ...h, article: articleMap.get(h.articleId) }))
+    },
+    { fallbackData: [] }
+  )
+
+  const restore = async (id: string) => {
+    await restoreHighlight(id)
+    await mutate()
+    await globalMutate('highlights-all-with-articles')
+  }
+
+  const permanentlyDelete = async (id: string) => {
+    await permanentlyDeleteHighlight(id)
+    await mutate()
+  }
+
+  const emptyAllTrash = async () => {
+    await emptyTrash()
+    await mutate()
+  }
+
+  return {
+    trashItems: data || [],
+    isLoading,
+    error,
+    restore,
+    permanentlyDelete,
+    emptyAllTrash,
   }
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSWRConfig } from 'swr'
-import { exportCloudData, importCloudData, getSyncConfig, saveSyncConfig } from '@/lib/db'
+import { exportCloudData, importCloudData, getSyncConfig, saveSyncConfig, purgeStaleTombstones } from '@/lib/db'
 import {
   decryptWithSessionKey,
   decryptSyncConfig,
@@ -78,6 +78,9 @@ export function useSync(): UseSyncReturn {
       // 2. Upload merged local state
       const snapshot = await exportCloudData()
       const { gistId } = await uploadToCloud(decrypted, snapshot)
+
+      // 2a. Tombstones already uploaded — safe to purge stale ones locally
+      purgeStaleTombstones().catch(() => {/* non-critical, ignore errors */})
 
       // 3. Update lastSyncAt; patch gistId if this was the first Gist upload
       const now = Date.now()

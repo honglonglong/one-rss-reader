@@ -19,6 +19,7 @@ import {
   Pencil,
   ArrowLeftRight,
   HelpCircle,
+  AlertCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -85,6 +86,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
   const [refreshingFeedIds, setRefreshingFeedIds] = useState<Set<string>>(new Set())
+  const [failedFeedIds, setFailedFeedIds] = useState<Set<string>>(new Set())
   const isRefreshing = refreshingFeedIds.size > 0
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['__ungrouped__']))
   const [existingGroups, setExistingGroups] = useState<string[]>([])
@@ -125,12 +127,17 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
     const feedsSnapshot = [...feeds]
     if (feedsSnapshot.length === 0) return
     const queue = [...feedsSnapshot]
+    let failCount = 0
     const worker = async () => {
       while (queue.length > 0) {
         const feed = queue.shift()!
         setRefreshingFeedIds((prev) => new Set([...prev, feed.id]))
         try {
           await refresh(feed.id)
+          setFailedFeedIds((prev) => { const n = new Set(prev); n.delete(feed.id); return n })
+        } catch {
+          failCount++
+          setFailedFeedIds((prev) => new Set([...prev, feed.id]))
         } finally {
           setRefreshingFeedIds((prev) => {
             const next = new Set(prev)
@@ -140,13 +147,15 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
         }
       }
     }
-    try {
-      await Promise.all(
-        Array.from({ length: Math.min(5, feedsSnapshot.length) }, () => worker())
-      )
+    await Promise.all(
+      Array.from({ length: Math.min(5, feedsSnapshot.length) }, () => worker())
+    )
+    if (failCount === 0) {
       toast.success('已刷新所有订阅')
-    } catch {
-      toast.error('刷新失败')
+    } else if (failCount < feedsSnapshot.length) {
+      toast.warning(`${failCount} 个订阅刷新失败`)
+    } else {
+      toast.error('所有订阅刷新失败')
     }
   }
 
@@ -162,8 +171,14 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
     onSelectFeed(feedId)
     setRefreshingFeedIds((prev) => new Set([...prev, feedId]))
     refresh(feedId)
-      .then(() => toast.success('已刷新'))
-      .catch(() => toast.error('刷新失败'))
+      .then(() => {
+        setFailedFeedIds((prev) => { const n = new Set(prev); n.delete(feedId); return n })
+        toast.success('已刷新')
+      })
+      .catch(() => {
+        setFailedFeedIds((prev) => new Set([...prev, feedId]))
+        toast.error('刷新失败')
+      })
       .finally(() =>
         setRefreshingFeedIds((prev) => {
           const next = new Set(prev)
@@ -413,12 +428,17 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
                   onEdit={setEditTarget}
                   unreadCounts={unreadCounts}
                   refreshingFeedIds={refreshingFeedIds}
+                  failedFeedIds={failedFeedIds}
                 />
               ))}
             </div>
           )}
         </div>
       </ScrollArea>
+
+      <div className="px-4 py-2 border-t border-sidebar-border shrink-0">
+        <p className="text-xs text-muted-foreground/60">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
+      </div>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
@@ -461,6 +481,7 @@ interface FeedGroupItemProps {
   onEdit: (feed: Feed) => void
   unreadCounts: Record<string, number>
   refreshingFeedIds: Set<string>
+  failedFeedIds: Set<string>
 }
 
 function FeedGroupItem({
@@ -477,6 +498,7 @@ function FeedGroupItem({
   onEdit,
   unreadCounts,
   refreshingFeedIds,
+  failedFeedIds,
 }: FeedGroupItemProps) {
   const isUngrouped = group.name === '__ungrouped__'
 
@@ -494,6 +516,7 @@ function FeedGroupItem({
             existingGroups={existingGroups}
             onLoadGroups={onLoadGroups}              onEdit={() => onEdit(feed)}          unreadCount={unreadCounts[feed.id] || 0}
             isRefreshing={refreshingFeedIds.has(feed.id)}
+            isFailed={failedFeedIds.has(feed.id)}
           />
         ))}
       </>
@@ -542,6 +565,7 @@ function FeedGroupItem({
               onEdit={() => onEdit(feed)}
               unreadCount={unreadCounts[feed.id] || 0}
               isRefreshing={refreshingFeedIds.has(feed.id)}
+              isFailed={failedFeedIds.has(feed.id)}
             />
           ))}
         </div>
@@ -561,6 +585,7 @@ interface FeedItemProps {
   onEdit: () => void
   unreadCount: number
   isRefreshing?: boolean
+  isFailed?: boolean
 }
 
 function FeedItem({
@@ -574,6 +599,7 @@ function FeedItem({
   onEdit,
   unreadCount,
   isRefreshing,
+  isFailed,
 }: FeedItemProps) {
   const [newGroupInput, setNewGroupInput] = useState('')
   const [showNewGroupInput, setShowNewGroupInput] = useState(false)
@@ -589,6 +615,8 @@ function FeedItem({
     >
       {isRefreshing ? (
         <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+      ) : isFailed ? (
+        <AlertCircle className="size-4 text-destructive shrink-0" />
       ) : feed.favicon && !faviconError ? (
         <img
           src={feed.favicon}

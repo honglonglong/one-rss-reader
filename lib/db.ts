@@ -102,13 +102,18 @@ export async function getFeed(id: string): Promise<Feed | undefined> {
 
 export async function getAllFeeds(): Promise<Feed[]> {
   const db = await getDB()
-  return db.getAll('feeds')
+  const feeds = await db.getAll('feeds')
+  return feeds.filter((f) => !f.deletedAt)
 }
 
 export async function deleteFeed(id: string): Promise<void> {
   const db = await getDB()
-  await db.delete('feeds', id)
-  // Also delete all articles from this feed
+  // Soft-delete: keep tombstone so cloud sync can propagate the deletion
+  const feed = await db.get('feeds', id)
+  if (feed) {
+    await db.put('feeds', { ...feed, deletedAt: Date.now() })
+  }
+  // Still physically delete articles to free up space
   const articles = await db.getAllFromIndex('articles', 'by-feed', id)
   const tx = db.transaction('articles', 'readwrite')
   await Promise.all(articles.map((a) => tx.store.delete(a.id)))
@@ -316,6 +321,39 @@ export async function deleteHighlight(id: string): Promise<void> {
   }
 }
 
+export async function getDeletedHighlights(): Promise<Highlight[]> {
+  const db = await getDB()
+  const all = await db.getAll('highlights')
+  return all
+    .filter((h) => h.deletedAt)
+    .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0))
+}
+
+export async function restoreHighlight(id: string): Promise<void> {
+  const db = await getDB()
+  const existing = await db.get('highlights', id)
+  if (existing) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { deletedAt, ...rest } = existing
+    await db.put('highlights', rest)
+  }
+}
+
+export async function permanentlyDeleteHighlight(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete('highlights', id)
+}
+
+export async function emptyTrash(): Promise<void> {
+  const db = await getDB()
+  const all = await db.getAll('highlights')
+  const deleted = all.filter((h) => h.deletedAt)
+  if (deleted.length === 0) return
+  const tx = db.transaction('highlights', 'readwrite')
+  await Promise.all(deleted.map((h) => tx.store.delete(h.id)))
+  await tx.done
+}
+
 // Settings operations
 export async function getSettings(): Promise<ReadingSettings> {
   const db = await getDB()
@@ -370,6 +408,38 @@ export function stableArticleId(link: string): string {
 
 export type { SyncSnapshot, ImportStats, CloudSyncSnapshot, ArticleState } from './types'
 
+/**
+ * Physically remove soft-deleted tombstones that are older than `olderThanMs`.
+ * Should be called after a successful cloud upload to ensure tombstones have
+ * already been propagated before they are purged locally.
+ */
+export async function purgeStaleTombstones(olderThanMs = 30 * 24 * 60 * 60 * 1000): Promise<void> {
+  const db = await getDB()
+  const cutoff = Date.now() - olderThanMs
+
+  // Feed tombstones
+  const feeds = await db.getAll('feeds')
+  const staleFeedIds = feeds
+    .filter((f) => f.deletedAt !== undefined && f.deletedAt < cutoff)
+    .map((f) => f.id)
+  if (staleFeedIds.length > 0) {
+    const tx = db.transaction('feeds', 'readwrite')
+    await Promise.all(staleFeedIds.map((id) => tx.store.delete(id)))
+    await tx.done
+  }
+
+  // Highlight tombstones
+  const highlights = await db.getAll('highlights')
+  const staleHighlightIds = highlights
+    .filter((h) => h.deletedAt !== undefined && h.deletedAt < cutoff)
+    .map((h) => h.id)
+  if (staleHighlightIds.length > 0) {
+    const tx = db.transaction('highlights', 'readwrite')
+    await Promise.all(staleHighlightIds.map((id) => tx.store.delete(id)))
+    await tx.done
+  }
+}
+
 /** Dump the entire database to a plain JS object. */
 export async function exportAllData(): Promise<SyncSnapshot> {
   const db = await getDB()
@@ -417,13 +487,18 @@ export async function importAllData(snapshot: SyncSnapshot): Promise<ImportStats
   const feedTx = db.transaction('feeds', 'readwrite')
   for (const remote of snapshot.feeds) {
     const existing = localFeedByUrl.get(remote.url) ?? localFeedById.get(remote.id)
+    // Use deletedAt as effective timestamp (tombstone wins over lastUpdated)
+    const remoteTs = remote.deletedAt ?? remote.lastUpdated
     if (!existing) {
+      if (remote.deletedAt) continue // tombstone for non-existent local feed — skip
       await feedTx.store.put(remote)
       stats.feedsAdded++
-    } else if (remote.lastUpdated > existing.lastUpdated) {
-      // Keep local id; update metadata from remote
-      await feedTx.store.put({ ...remote, id: existing.id })
-      stats.feedsUpdated++
+    } else {
+      const localTs = existing.deletedAt ?? existing.lastUpdated
+      if (remoteTs > localTs) {
+        await feedTx.store.put({ ...remote, id: existing.id })
+        if (!remote.deletedAt) stats.feedsUpdated++
+      }
     }
   }
   await feedTx.done
@@ -533,9 +608,9 @@ export async function exportCloudData(): Promise<CloudSyncSnapshot> {
 /**
  * Merge a CloudSyncSnapshot (state-only) into the local database.
  *
- * Article merge note: only existing local articles are updated. Articles that
- * exist in the remote state but not locally are skipped — they will be picked
- * up correctly after the next feed refresh + sync cycle.
+ * Article merge note: if a remote article state has no local counterpart, a
+ * stub record (content='') is written so that refresh() can restore the
+ * isRead/isSaved state via its readStateByLink logic on the next feed refresh.
  */
 export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<ImportStats> {
   const db = await getDB()
@@ -556,12 +631,18 @@ export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<Impo
   const feedTx = db.transaction('feeds', 'readwrite')
   for (const remote of snapshot.feeds) {
     const existing = localFeedByUrl.get(remote.url) ?? localFeedById.get(remote.id)
+    // Use deletedAt as effective timestamp (tombstone wins over lastUpdated)
+    const remoteTs = remote.deletedAt ?? remote.lastUpdated
     if (!existing) {
+      if (remote.deletedAt) continue // tombstone for non-existent local feed — skip
       await feedTx.store.put(remote)
       stats.feedsAdded++
-    } else if (remote.lastUpdated > existing.lastUpdated) {
-      await feedTx.store.put({ ...remote, id: existing.id })
-      stats.feedsUpdated++
+    } else {
+      const localTs = existing.deletedAt ?? existing.lastUpdated
+      if (remoteTs > localTs) {
+        await feedTx.store.put({ ...remote, id: existing.id })
+        if (!remote.deletedAt) stats.feedsUpdated++
+      }
     }
   }
   await feedTx.done
@@ -573,7 +654,13 @@ export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<Impo
   const articleTx = db.transaction('articles', 'readwrite')
   for (const remote of (snapshot.articleStates ?? [])) {
     const local = localArticleById.get(remote.id)
-    if (!local) continue // article not cached locally yet; skip until next refresh
+    if (!local) {
+      // No local record yet: write a stub (content='') so that refresh() can
+      // restore the isRead/isSaved state via its readStateByLink logic.
+      await articleTx.store.put({ ...remote, content: '' })
+      stats.articlesAdded++
+      continue
+    }
     const remoteSavedAt = remote.savedAt ?? 0
     const localSavedAt = local.savedAt ?? 0
     const merged: Article = {

@@ -3,12 +3,22 @@
 import { useState, useMemo } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { Trash2, ExternalLink, Edit2, Check, X, Loader2, StickyNote } from 'lucide-react'
+import { Trash2, ExternalLink, Edit2, Check, X, Loader2, StickyNote, RotateCcw, Trash } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
-import { useAllHighlightsWithArticles, type HighlightWithArticle } from '@/hooks/use-highlights'
+import { useAllHighlightsWithArticles, useTrashHighlights, type HighlightWithArticle } from '@/hooks/use-highlights'
 import { toast } from 'sonner'
 import type { Article, HighlightColor } from '@/lib/types'
 
@@ -27,8 +37,12 @@ const colorMap: Record<HighlightColor, string> = {
 export function HighlightsPanel({ onOpenArticle }: HighlightsPanelProps) {
   const { highlightsWithArticles, isLoading, editHighlight, removeHighlight } =
     useAllHighlightsWithArticles()
+  const { trashItems, isLoading: trashLoading, restore, permanentlyDelete, emptyAllTrash } =
+    useTrashHighlights()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editNote, setEditNote] = useState('')
+  const [activeTab, setActiveTab] = useState<'active' | 'trash'>('active')
+  const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false)
 
   // Group highlights by article, sorted by most recent highlight
   const groupedByArticle = useMemo(() => {
@@ -63,10 +77,26 @@ export function HighlightsPanel({ onOpenArticle }: HighlightsPanelProps) {
 
   const handleDelete = async (id: string) => {
     await removeHighlight(id)
-    toast.success('已删除标记')
+    toast.success('已移至废纸篓')
   }
 
-  if (isLoading) {
+  const handleRestore = async (id: string) => {
+    await restore(id)
+    toast.success('已恢复标记')
+  }
+
+  const handlePermanentlyDelete = async (id: string) => {
+    await permanentlyDelete(id)
+    toast.success('已永久删除')
+  }
+
+  const handleEmptyTrash = async () => {
+    await emptyAllTrash()
+    setConfirmEmptyTrash(false)
+    toast.success('废纸篓已清空')
+  }
+
+  if (isLoading || trashLoading) {
     return (
       <div className="flex h-full items-center justify-center border-r border-border">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -76,12 +106,54 @@ export function HighlightsPanel({ onOpenArticle }: HighlightsPanelProps) {
 
   return (
     <div className="flex h-full flex-col border-r border-border">
-      <div className="border-b border-border p-4">
-        <h2 className="font-semibold">标记与笔记</h2>
-        <p className="text-sm text-muted-foreground">{highlightsWithArticles.length} 条标记</p>
+      <div className="border-b border-border px-4 pt-4 pb-0">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-semibold">标记与笔记</h2>
+          {activeTab === 'trash' && trashItems.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-destructive hover:text-destructive px-2"
+              onClick={() => setConfirmEmptyTrash(true)}
+            >
+              <Trash className="size-3 mr-1" />
+              清空废纸篓
+            </Button>
+          )}
+        </div>
+        <div className="flex gap-1">
+          <button
+            className={cn(
+              'px-3 py-1.5 text-sm rounded-t-md border-b-2 transition-colors',
+              activeTab === 'active'
+                ? 'border-primary text-foreground font-medium'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            )}
+            onClick={() => setActiveTab('active')}
+          >
+            标记
+            {highlightsWithArticles.length > 0 && (
+              <span className="ml-1.5 text-xs text-muted-foreground">{highlightsWithArticles.length}</span>
+            )}
+          </button>
+          <button
+            className={cn(
+              'px-3 py-1.5 text-sm rounded-t-md border-b-2 transition-colors',
+              activeTab === 'trash'
+                ? 'border-primary text-foreground font-medium'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            )}
+            onClick={() => setActiveTab('trash')}
+          >
+            废纸篓
+            {trashItems.length > 0 && (
+              <span className="ml-1.5 text-xs text-muted-foreground">{trashItems.length}</span>
+            )}
+          </button>
+        </div>
       </div>
 
-      {highlightsWithArticles.length === 0 ? (
+      {activeTab === 'active' && highlightsWithArticles.length === 0 && (
         <div className="flex flex-1 items-center justify-center text-muted-foreground">
           <div className="text-center">
             <StickyNote className="mx-auto mb-2 size-8 opacity-40" />
@@ -89,7 +161,9 @@ export function HighlightsPanel({ onOpenArticle }: HighlightsPanelProps) {
             <p className="mt-1 text-xs">在文章中选中文字可添加标记</p>
           </div>
         </div>
-      ) : (
+      )}
+
+      {activeTab === 'active' && highlightsWithArticles.length > 0 && (
         <ScrollArea className="flex-1">
           <div className="flex flex-col gap-3 p-3">
             {groupedByArticle.map(({ article, highlights }) => (
@@ -190,7 +264,7 @@ export function HighlightsPanel({ onOpenArticle }: HighlightsPanelProps) {
                                 size="icon"
                                 className="size-6 text-destructive hover:text-destructive"
                                 onClick={() => handleDelete(h.id)}
-                                title="删除标记"
+                                title="移至废纸篓"
                               >
                                 <Trash2 className="size-3" />
                               </Button>
@@ -206,6 +280,85 @@ export function HighlightsPanel({ onOpenArticle }: HighlightsPanelProps) {
           </div>
         </ScrollArea>
       )}
+
+      {/* Trash tab content */}
+      {activeTab === 'trash' && trashItems.length === 0 && (
+        <div className="flex flex-1 items-center justify-center text-muted-foreground">
+          <div className="text-center">
+            <Trash className="mx-auto mb-2 size-8 opacity-40" />
+            <p className="text-sm">废纸篓为空</p>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'trash' && trashItems.length > 0 && (
+        <ScrollArea className="flex-1">
+          <div className="flex flex-col gap-2 p-3">
+            {trashItems.map((h) => (
+              <div key={h.id} className="rounded-lg border border-border p-3 opacity-75">
+                <p className="mb-1 text-xs text-muted-foreground truncate">
+                  {h.article?.title ?? '未知文章'}
+                </p>
+                <div className={cn('mb-2 rounded px-2 py-1 text-sm', colorMap[h.color])}>
+                  {h.text}
+                </div>
+                {h.note && (
+                  <p className="mb-2 text-xs italic text-muted-foreground">
+                    &ldquo;{h.note}&rdquo;
+                  </p>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    {h.deletedAt
+                      ? formatDistanceToNow(h.deletedAt, { addSuffix: true, locale: zhCN })
+                      : ''}
+                  </span>
+                  <div className="flex gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      onClick={() => handleRestore(h.id)}
+                      title="恢复标记"
+                    >
+                      <RotateCcw className="size-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 text-destructive hover:text-destructive"
+                      onClick={() => handlePermanentlyDelete(h.id)}
+                      title="永久删除"
+                    >
+                      <Trash2 className="size-3" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      )}
+
+      <AlertDialog open={confirmEmptyTrash} onOpenChange={setConfirmEmptyTrash}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>清空废纸篓</AlertDialogTitle>
+            <AlertDialogDescription>
+              将永久删除废纸篓中的 {trashItems.length} 条标记，此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleEmptyTrash}
+            >
+              确认清空
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -79,6 +79,16 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     }
   }, [article?.id])
 
+  // Force all links in article content to open in new tab
+  useEffect(() => {
+    if (!contentRef.current) return
+    const links = contentRef.current.querySelectorAll<HTMLAnchorElement>('a[href]')
+    links.forEach((link) => {
+      link.setAttribute('target', '_blank')
+      link.setAttribute('rel', 'noopener noreferrer')
+    })
+  }, [article?.id])
+
   // Handle text selection
   const handleMouseUp = useCallback(() => {
     const selection = window.getSelection()

@@ -14,9 +14,9 @@ export function useFeeds() {
   )
 
   const subscribe = async (url: string, group?: string): Promise<Feed> => {
-    // Check if already subscribed
+    // Check if already subscribed (getFeedByUrl returns even soft-deleted records)
     const existing = await getFeedByUrl(url)
-    if (existing) {
+    if (existing && !existing.deletedAt) {
       throw new Error('已订阅此源')
     }
 
@@ -27,6 +27,16 @@ export function useFeeds() {
     // Add group if provided
     if (group) {
       feed.group = group
+    }
+
+    if (existing?.deletedAt) {
+      // Re-subscribe: restore the soft-deleted record keeping the same ID
+      // (a new ID would conflict with the unique URL index still pointing to the old record)
+      const restoredFeed: Feed = { ...feed, id: existing.id, deletedAt: undefined }
+      await addFeed(restoredFeed)
+      await addArticles(articles.map((a) => ({ ...a, feedId: existing.id, feedTitle: restoredFeed.title })))
+      await mutate()
+      return restoredFeed
     }
 
     // Save to database
@@ -89,11 +99,13 @@ export function useFeeds() {
         await addArticles(articlesToAdd)
       } catch (error) {
         console.error(`Failed to refresh feed ${feed.title}:`, error)
+        if (feedId) throw error
       }
     }
 
     await mutate()
     await globalMutate((key: unknown) => typeof key === 'string' && key.startsWith('articles'))
+    await globalMutate('unread-counts')
   }
 
   const editFeed = async (feedId: string, updates: Partial<Pick<import('@/lib/types').Feed, 'title' | 'url' | 'group'>>) => {
