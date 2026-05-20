@@ -29,8 +29,8 @@ export const metadata: Metadata = {
     title: 'One RSS Reader',
   },
   icons: {
-    icon: '/icons/icon-512.jpg',
-    apple: '/icons/icon-512.jpg',
+    icon: '/icons/icon-512.png',
+    apple: '/icons/icon-180.png',
   },
 }
 

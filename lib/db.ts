@@ -25,7 +25,7 @@ interface RSSReaderDB extends DBSchema {
 }
 
 const DB_NAME = 'rss-reader-db'
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 let dbInstance: IDBPDatabase<RSSReaderDB> | null = null
 
@@ -81,6 +81,29 @@ export async function getDB(): Promise<IDBPDatabase<RSSReaderDB>> {
           // Replace article record with stable ID
           await articleStore.delete(article.id)
           await articleStore.put({ ...article, id: stableId })
+        }
+      }
+
+      // v3 → v4: re-key feeds to stable URL-based IDs, remap articles' feedId
+      if (oldVersion < 4) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const feedStore = (transaction as any).objectStore('feeds')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const articleStore = (transaction as any).objectStore('articles')
+        const feeds: Feed[] = await feedStore.getAll()
+        for (const feed of feeds) {
+          if (!feed.url) continue
+          const newId = stableFeedId(feed.url)
+          if (newId === feed.id) continue
+          // Remap all articles for this feed to the new stable feedId
+          const articles: Article[] = await articleStore.index('by-feed').getAll(feed.id)
+          for (const a of articles) {
+            await articleStore.delete(a.id)
+            await articleStore.put({ ...a, feedId: newId })
+          }
+          // Replace feed record with stable ID
+          await feedStore.delete(feed.id)
+          await feedStore.put({ ...feed, id: newId })
         }
       }
     },
@@ -404,6 +427,17 @@ export function stableArticleId(link: string): string {
   return `a-${(h1 >>> 0).toString(36)}-${(h2 >>> 0).toString(36)}`
 }
 
+export function stableFeedId(url: string): string {
+  if (!url) return generateId()
+  let h1 = 5381, h2 = 52711
+  for (let i = 0; i < url.length; i++) {
+    const c = url.charCodeAt(i)
+    h1 = Math.imul(31, h1) ^ c
+    h2 = Math.imul(29, h2) ^ c
+  }
+  return `f-${(h1 >>> 0).toString(36)}-${(h2 >>> 0).toString(36)}`
+}
+
 // ── Sync helpers ──────────────────────────────────────────────────────────────
 
 export type { SyncSnapshot, ImportStats, CloudSyncSnapshot, ArticleState } from './types'
@@ -647,6 +681,16 @@ export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<Impo
   }
   await feedTx.done
 
+  // Build mapping: remote feedId → local feedId (handles ID mismatch during v3→v4 transition
+  // where two devices independently subscribed the same feed before syncing)
+  const remoteFeedIdToLocal = new Map<string, string>()
+  for (const remote of snapshot.feeds) {
+    const existing = localFeedByUrl.get(remote.url)
+    if (existing && existing.id !== remote.id) {
+      remoteFeedIdToLocal.set(remote.id, existing.id)
+    }
+  }
+
   // ── Article states (only update existing local records) ────────────────────
   const localArticles = await db.getAll('articles')
   const localArticleById = new Map(localArticles.map((a) => [a.id, a]))
@@ -657,7 +701,8 @@ export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<Impo
     if (!local) {
       // No local record yet: write a stub (content='') so that refresh() can
       // restore the isRead/isSaved state via its readStateByLink logic.
-      await articleTx.store.put({ ...remote, content: '' })
+      const resolvedFeedId = remoteFeedIdToLocal.get(remote.feedId) ?? remote.feedId
+      await articleTx.store.put({ ...remote, feedId: resolvedFeedId, content: '' })
       stats.articlesAdded++
       continue
     }
