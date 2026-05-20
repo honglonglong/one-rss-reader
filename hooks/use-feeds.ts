@@ -89,9 +89,11 @@ export function useFeeds() {
         // 获取剩余收藏文章的链接，避免重复添加
         const savedArticles = await getArticlesByFeed(feed.id)
         const savedLinks = new Set(savedArticles.map((a) => a.link))
+        // 只保留 90 天内的文章，与云同步截断保持一致
+        const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000
         // 恢复之前已读的文章的已读状态
         const articlesToAdd = updatedArticles
-          .filter((a) => !savedLinks.has(a.link))
+          .filter((a) => !savedLinks.has(a.link) && a.pubDate > ninetyDaysAgo)
           .map((a) => {
             const readState = readStateByLink.get(a.link)
             return readState ? { ...a, ...readState } : a

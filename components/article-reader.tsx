@@ -89,6 +89,15 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     })
   }, [article?.id])
 
+  // Prevent video/audio autoplay
+  useEffect(() => {
+    if (!contentRef.current) return
+    contentRef.current.querySelectorAll<HTMLVideoElement | HTMLAudioElement>('video, audio').forEach((el) => {
+      el.removeAttribute('autoplay')
+      el.pause()
+    })
+  }, [article?.id])
+
   // Handle text selection
   const handleMouseUp = useCallback(() => {
     const selection = window.getSelection()

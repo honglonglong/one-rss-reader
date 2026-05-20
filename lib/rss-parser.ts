@@ -72,7 +72,10 @@ export function sanitizeHtml(html: string): string {
   
   // Remove javascript: urls
   clean = clean.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
-  
+
+  // Remove autoplay attribute from video/audio elements
+  clean = clean.replace(/\s*autoplay(\s*=\s*["'][^"']*["'])?/gi, '')
+
   return clean
 }
 
