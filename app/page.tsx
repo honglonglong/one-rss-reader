@@ -10,6 +10,7 @@ import { ArticleReader } from '@/components/article-reader'
 import { HighlightsPanel } from '@/components/highlights-panel'
 import { OfflineIndicator } from '@/components/offline-indicator'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useAppBadge } from '@/hooks/use-app-badge'
 import { cleanupOldReadArticles } from '@/lib/db'
 import type { Article } from '@/lib/types'
 
@@ -22,6 +23,7 @@ type View = 'all' | 'feed' | 'saved' | 'highlights'
 
 export default function Home() {
   const isMobile = useIsMobile()
+  useAppBadge()
 
   // Auto-cleanup old read articles once per day
   useEffect(() => {
