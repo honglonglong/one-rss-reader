@@ -36,6 +36,8 @@ interface SyncDialogProps {
   onSaveConfig?: (cfg: EncryptedSyncConfig) => Promise<void>
   onClearConfig?: () => Promise<void>
   onTriggerSync?: (passphrase?: string) => Promise<void>
+  /** When true, renders content directly without Dialog wrapper */
+  asPanel?: boolean
 }
 
 // ── Provider form helpers ─────────────────────────────────────────────────────
@@ -100,6 +102,7 @@ export function SyncDialog({
   onSaveConfig,
   onClearConfig,
   onTriggerSync,
+  asPanel,
 }: SyncDialogProps) {
   const { mutate: globalMutate } = useSWRConfig()
   const [open, setOpen] = useState(false)
@@ -259,18 +262,8 @@ export function SyncDialog({
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>数据同步 / 备份</DialogTitle>
-          <DialogDescription>
-            通过云端存储在多设备间同步订阅、已读状态、收藏和高亮标注。
-          </DialogDescription>
-        </DialogHeader>
-
-        <Tabs defaultValue={isConfigured ? 'cloud' : 'export'}>
+  const tabsContent = (
+    <Tabs defaultValue={isConfigured ? 'cloud' : 'export'}>
           <TabsList className="w-full">
             <TabsTrigger value="cloud" className="flex-1">
               <Cloud className="mr-1.5 size-3.5" />云同步
@@ -465,6 +458,23 @@ export function SyncDialog({
             )}
           </TabsContent>
         </Tabs>
+  )
+
+  if (asPanel) {
+    return tabsContent
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>数据同步 / 备份</DialogTitle>
+          <DialogDescription>
+            通过云端存储在多设备间同步订阅、已读状态、收藏和高亮标注。
+          </DialogDescription>
+        </DialogHeader>
+        {tabsContent}
       </DialogContent>
     </Dialog>
   )

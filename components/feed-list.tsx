@@ -14,12 +14,10 @@ import {
   FolderOpen,
   Folder,
   Edit2,
-  FileText,
   StickyNote,
   Pencil,
-  ArrowLeftRight,
-  HelpCircle,
   AlertCircle,
+  Settings as SettingsIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -30,7 +28,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
@@ -62,10 +59,8 @@ import {
 } from '@/components/ui/collapsible'
 import { useFeeds } from '@/hooks/use-feeds'
 import { useUnreadCounts } from '@/hooks/use-articles'
-import { useSync } from '@/hooks/use-sync'
 import { AddFeedDialog } from './add-feed-dialog'
-import { OPMLDialog } from './opml-dialog'
-import { SyncDialog } from './sync-dialog'
+import SettingsPanel from './settings-panel'
 import { getAllGroups } from '@/lib/db'
 import { toast } from 'sonner'
 import type { Feed, FeedGroup } from '@/lib/types'
@@ -80,9 +75,8 @@ interface FeedListProps {
 
 export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelectHighlights, view }: FeedListProps) {
   const { feeds, unsubscribe, refresh, setFeedGroup, editFeed, isLoading } = useFeeds()
-  const { encryptedConfig, isSyncing, lastSyncAt, needsPassphrase, triggerSync, saveConfig, clearConfig } = useSync()
   const unreadCounts = useUnreadCounts()
-  const [helpOpen, setHelpOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
   const [refreshingFeedIds, setRefreshingFeedIds] = useState<Set<string>>(new Set())
@@ -252,125 +246,16 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
               </Button>
             }
           />
-          <OPMLDialog
-            trigger={
-              <Button variant="ghost" size="icon" className="size-8" title="OPML 导入/导出">
-                <FileText className="size-4" />
-              </Button>
-            }
-          />
-          <SyncDialog
-            trigger={
-              <Button variant="ghost" size="icon" className="size-8" title="数据同步/备份">
-                <ArrowLeftRight className="size-4" />
-              </Button>
-            }
-            onImportDone={() => refresh()}
-            encryptedConfig={encryptedConfig}
-            lastSyncAt={lastSyncAt}
-            isSyncing={isSyncing}
-            needsPassphrase={needsPassphrase}
-            onSaveConfig={saveConfig}
-            onClearConfig={clearConfig}
-            onTriggerSync={triggerSync}
-          />
-          <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8" title="使用说明">
-                <HelpCircle className="size-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>One RSS Reader 使用说明</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 text-sm">
-
-                {/* 订阅管理 */}
-                <div>
-                  <p className="text-lg font-semibold mb-2">📥订阅管理</p>
-                  <ul className="space-y-2">
-                    <li className="pl-6">
-                      <p className="font-medium">添加与管理订阅</p>
-                      <p className="text-xs text-muted-foreground">RSS 图标添加订阅，三点菜单编辑 / 删除 / 移入分组，↻ 图标刷新全部订阅。</p>
-                    </li>
-                    <li className="pl-6">
-                      <p className="font-medium">OPML 导入 / 导出</p>
-                      <p className="text-xs text-muted-foreground">点击文档图标批量导入或导出订阅列表（.opml 格式），方便迁移与备份。</p>
-                    </li>
-                  </ul>
-                </div>
-
-                <Separator />
-
-                {/* 阅读体验 */}
-                <div>
-                  <p className="text-lg font-semibold mb-2">📖阅读体验</p>
-                  <ul className="space-y-2">
-                    <li className="pl-6">
-                      <p className="font-medium">文章阅读</p>
-                      <p className="text-xs text-muted-foreground">点击文章自动标记已读，眼睛图标切换隐藏 / 显示已读，列表显示估算阅读时间。</p>
-                    </li>
-                    <li className="pl-6">
-                      <p className="font-medium">全屏阅读</p>
-                      <p className="text-xs text-muted-foreground">阅读器右上角方形按钮可全屏展开，按 ESC 退出。</p>
-                    </li>
-                    <li className="pl-6">
-                      <p className="font-medium">收藏</p>
-                      <p className="text-xs text-muted-foreground">书签图标收藏文章，收藏内容离线可读且不自动清理。</p>
-                    </li>
-                    <li className="pl-6">
-                      <p className="font-medium">阅读设置</p>
-                      <p className="text-xs text-muted-foreground">调整主题（亮色 / 暗色 / 米黄）、字体大小、行距、最大阅读宽度。</p>
-                    </li>
-                  </ul>
-                </div>
-
-                <Separator />
-
-                {/* 标注与导出 */}
-                <div>
-                  <p className="text-lg font-semibold mb-2">✏️标注与导出</p>
-                  <ul className="space-y-2">
-                    <li className="pl-6">
-                      <p className="font-medium">标记与笔记</p>
-                      <p className="text-xs text-muted-foreground">阅读时选中文字可高亮（5 种颜色）或添加笔记，所有标记在「标记与笔记」面板汇总查看。</p>
-                    </li>
-                    <li className="pl-6">
-                      <p className="font-medium">导出 Markdown</p>
-                      <p className="text-xs text-muted-foreground">阅读器内可将文章（含标注）一键导出为 .md 文件，适合导入 Obsidian 等笔记工具。</p>
-                    </li>
-                  </ul>
-                </div>
-
-                <Separator />
-
-                {/* 数据与同步 */}
-                <div>
-                  <p className="text-lg font-semibold mb-2">☁️数据与同步</p>
-                  <ul className="space-y-2">
-                    <li className="pl-6">
-                      <p className="font-medium">隐私安全</p>
-                      <p className="text-xs text-muted-foreground">无服务器，所有数据存储在本地浏览器（IndexedDB），完全由你掌控，不上传到任何第三方。</p>
-                    </li>
-                    <li className="pl-6">
-                      <p className="font-medium">同步与备份</p>
-                      <p className="text-xs text-muted-foreground">点击 ⇄ 图标下载本地备份 JSON；或配置 GitHub Gist / WebDAV / S3 云同步。云同步为精简模式，只同步最近 90 天的文章状态，保持文件体积小。</p>
-                    </li>
-                    <li className="pl-6">
-                      <p className="font-medium">离线阅读</p>
-                      <p className="text-xs text-muted-foreground">PWA 应用，可安装到主屏幕，已收藏文章支持完全离线访问。</p>
-                    </li>
-                    <li className="pl-6">
-                      <p className="font-medium">自动清理</p>
-                      <p className="text-xs text-muted-foreground">30 天前的已读文章每天自动清理；也可点击文章列表右上角垃圾桶立即清理。</p>
-                    </li>
-                  </ul>
-                </div>
-
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            title="设置"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <SettingsIcon className="size-4" />
+          </Button>
+          <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} />
         </div>
       </div>
 

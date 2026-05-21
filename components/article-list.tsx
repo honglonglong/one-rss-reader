@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { Bookmark, BookmarkCheck, Loader2, Eye, EyeOff, Trash2, HardDriveDownload, CheckCheck } from 'lucide-react'
+import { Bookmark, BookmarkCheck, Loader2, Eye, EyeOff, Trash2, HardDriveDownload, CheckCheck, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -16,6 +16,8 @@ import {
 } from '@/components/ui/tooltip'
 import { useArticles, useSavedArticles } from '@/hooks/use-articles'
 import { useReadingSettings } from '@/hooks/use-reading-settings'
+import { useFeeds } from '@/hooks/use-feeds'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { htmlToText, getReadingTime } from '@/lib/rss-parser'
 import { toast } from 'sonner'
 import type { Article } from '@/lib/types'
@@ -33,6 +35,15 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
   const { settings, updateSettings } = useReadingSettings()
   const hideRead = view === 'saved' ? false : (settings.hideRead ?? false)
   const [displayLimit, setDisplayLimit] = useState(PAGE_SIZE)
+
+  const { feeds, refresh } = useFeeds()
+  const isMobile = useIsMobile()
+  const feedTitle = view === 'feed' ? feeds.find(f => f.id === feedId)?.title : undefined
+  const canPullRefresh = isMobile && view === 'feed' && !!feedId
+  const containerRef = useRef<HTMLDivElement>(null)
+  const touchStartYRef = useRef(0)
+  const [pullY, setPullY] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Reset pagination when switching feeds or views
   useEffect(() => {
@@ -100,6 +111,32 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
     }
   }
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!canPullRefresh) return
+    touchStartYRef.current = e.touches[0].clientY
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!canPullRefresh || isRefreshing) return
+    const delta = e.touches[0].clientY - touchStartYRef.current
+    if (delta <= 0) { setPullY(0); return }
+    const viewport = containerRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null
+    if ((viewport?.scrollTop ?? 0) > 0) { setPullY(0); return }
+    setPullY(Math.min(delta * 0.4, 64))
+  }
+
+  const handleTouchEnd = async () => {
+    if (!canPullRefresh) return
+    if (pullY >= 60 && !isRefreshing) {
+      setIsRefreshing(true)
+      setPullY(0)
+      try { await refresh(feedId!) }
+      finally { setIsRefreshing(false) }
+    } else {
+      setPullY(0)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center border-r border-border">
@@ -110,9 +147,10 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
 
   if (articles.length === 0) {
     return (
-      <div className="flex h-full flex-col border-r border-border">
+      <div ref={containerRef} className="flex h-full flex-col border-r border-border" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         <ArticleListHeader
           view={view}
+          feedTitle={feedTitle}
           articleCount={0}
           readCount={0}
           unreadCount={0}
@@ -145,9 +183,10 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
   }
 
   return (
-    <div className="flex h-full flex-col border-r border-border">
+    <div ref={containerRef} className="flex h-full flex-col border-r border-border" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
       <ArticleListHeader
         view={view}
+        feedTitle={feedTitle}
         articleCount={articles.length}
         readCount={readCount}
         unreadCount={unreadCount}
@@ -157,6 +196,21 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
         onCleanup={handleCleanup}
         onMarkAllRead={view === 'feed' ? handleMarkAllRead : undefined}
       />
+      <div
+        className="flex items-center justify-center overflow-hidden"
+        style={{ height: isRefreshing ? 40 : pullY }}
+      >
+        {isRefreshing ? (
+          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+        ) : pullY > 0 ? (
+          <ChevronDown
+            className={cn(
+              'size-4 text-muted-foreground transition-transform duration-200',
+              pullY >= 60 && 'rotate-180'
+            )}
+          />
+        ) : null}
+      </div>
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col">
           {articles.slice(0, displayLimit).map((article) => (
@@ -187,6 +241,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
 
 interface ArticleListHeaderProps {
   view: string
+  feedTitle?: string
   articleCount: number
   readCount: number
   unreadCount: number
@@ -199,6 +254,7 @@ interface ArticleListHeaderProps {
 
 function ArticleListHeader({
   view,
+  feedTitle,
   articleCount,
   readCount,
   unreadCount,
@@ -213,7 +269,7 @@ function ArticleListHeader({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-semibold">
-            {view === 'saved' ? '收藏' : view === 'feed' ? '订阅文章' : '所有文章'}
+            {view === 'saved' ? '收藏' : view === 'feed' ? (feedTitle ?? '订阅文章') : '所有文章'}
           </h2>
           <p className="text-sm text-muted-foreground">
             {hideRead ? `${unreadCount} 篇未读` : `${articleCount} 篇文章`}

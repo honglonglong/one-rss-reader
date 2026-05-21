@@ -20,9 +20,10 @@ import type { OPMLOutline } from '@/lib/types'
 
 interface OPMLDialogProps {
   trigger?: React.ReactNode
+  asPanel?: boolean
 }
 
-export function OPMLDialog({ trigger }: OPMLDialogProps) {
+export function OPMLDialog({ trigger, asPanel }: OPMLDialogProps) {
   const [open, setOpen] = useState(false)
   const [importItems, setImportItems] = useState<OPMLOutline[]>([])
   const [importResults, setImportResults] = useState<{ url: string; success: boolean; error?: string }[]>([])
@@ -93,25 +94,8 @@ export function OPMLDialog({ trigger }: OPMLDialogProps) {
     toast.success('OPML 导出成功')
   }
 
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button variant="outline" size="sm" className="gap-2">
-            <FileText className="size-4" />
-            OPML
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>OPML 导入/导出</DialogTitle>
-          <DialogDescription>
-            导入或导出你的订阅列表
-          </DialogDescription>
-        </DialogHeader>
-
-        <Tabs defaultValue="import" className="w-full">
+  const content = (
+    <Tabs defaultValue="import" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="import" className="gap-2">
               <Upload className="size-4" />
@@ -226,6 +210,30 @@ export function OPMLDialog({ trigger }: OPMLDialogProps) {
             </Button>
           </TabsContent>
         </Tabs>
+  )
+
+  if (asPanel) {
+    return content
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {trigger || (
+          <Button variant="outline" size="sm" className="gap-2">
+            <FileText className="size-4" />
+            OPML
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>OPML 导入/导出</DialogTitle>
+          <DialogDescription>
+            导入或导出你的订阅列表
+          </DialogDescription>
+        </DialogHeader>
+        {content}
       </DialogContent>
     </Dialog>
   )

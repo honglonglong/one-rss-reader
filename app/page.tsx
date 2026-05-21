@@ -25,6 +25,14 @@ export default function Home() {
   const isMobile = useIsMobile()
   useAppBadge()
 
+  // Restore global font size from localStorage on initial load
+  useEffect(() => {
+    const saved = localStorage.getItem('globalFontSize')
+    if (saved) {
+      document.documentElement.style.fontSize = `${saved}px`
+    }
+  }, [])
+
   // Auto-cleanup old read articles once per day
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10)
