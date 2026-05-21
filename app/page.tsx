@@ -13,6 +13,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useAppBadge } from '@/hooks/use-app-badge'
 import { cleanupOldReadArticles } from '@/lib/db'
 import type { Article } from '@/lib/types'
+import { SyncProvider } from '@/components/sync-provider'
 
 const FEED_LIST_WIDTH_KEY = 'feedListWidth'
 const FEED_LIST_MIN_WIDTH = 160
@@ -140,6 +141,7 @@ export default function Home() {
   // Mobile layout
   if (isMobile) {
     return (
+      <SyncProvider>
       <div className="h-dvh flex flex-col bg-background">
         {/* Mobile header */}
         <header className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
@@ -208,11 +210,13 @@ export default function Home() {
 
         <OfflineIndicator />
       </div>
+      </SyncProvider>
     )
   }
 
   // Desktop layout - three columns with expandable reader
   return (
+    <SyncProvider>
     <div className="h-dvh flex bg-background overflow-hidden">
       {/* Sidebar - feeds */}
       <div
@@ -269,5 +273,6 @@ export default function Home() {
 
       <OfflineIndicator />
     </div>
+    </SyncProvider>
   )
 }

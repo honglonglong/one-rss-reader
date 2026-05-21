@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSWRConfig } from 'swr'
 import { exportCloudData, importCloudData, getSyncConfig, saveSyncConfig, purgeStaleTombstones } from '@/lib/db'
 import {
@@ -119,6 +119,34 @@ export function useSync(): UseSyncReturn {
     }
     await doSync(blob, config ?? undefined)
   }, [encryptedConfig, doSync])
+
+  // Scheduled auto-sync: every 15 min via setInterval, and immediately when the tab regains focus
+  const AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000
+
+  // Keep a ref to the latest check-and-sync logic so the interval never goes stale
+  const autoSyncRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    autoSyncRef.current = () => {
+      if (isSyncing) return
+      if (document.visibilityState !== 'visible') return
+      if (lastSyncAt !== undefined && Date.now() - lastSyncAt < AUTO_SYNC_INTERVAL_MS) return
+      triggerSync().catch((e) => {/* silent — errors surface via status */console.log(e)})
+    }
+  })
+
+  // Only re-register the interval when the sync config itself changes
+  useEffect(() => {
+    if (!encryptedConfig || needsPassphrase) return
+
+    const run = () => autoSyncRef.current()
+    const timer = setInterval(run, AUTO_SYNC_INTERVAL_MS)
+    document.addEventListener('visibilitychange', run)
+
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', run)
+    }
+  }, [encryptedConfig, needsPassphrase])
 
   const saveConfig = useCallback(async (cfg: EncryptedSyncConfig) => {
     await saveSyncConfig(cfg)
