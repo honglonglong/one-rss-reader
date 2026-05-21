@@ -263,7 +263,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
         ) : null}
       </div>
       <ScrollArea className="flex-1 min-h-0">
-        <div className="flex flex-col" style={{ zoom: listFontSize / 14 }}>
+        <div className="flex flex-col" style={{ fontSize: `${listFontSize}px` }}>
           {articles.slice(0, displayLimit).map((article) => (
             <ArticleItem
               key={article.id}
@@ -417,9 +417,10 @@ function ArticleItem({ article, isSelected, onSelect, onToggleSaved }: ArticleIt
           )}
           <h3
             className={cn(
-              'text-sm leading-snug line-clamp-2',
+              'leading-snug line-clamp-2',
               !article.isRead && 'font-semibold'
             )}
+            style={{ fontSize: '1em' }}
           >
             {article.title}
           </h3>
@@ -438,11 +439,11 @@ function ArticleItem({ article, isSelected, onSelect, onToggleSaved }: ArticleIt
         </Button>
       </div>
       {summary && (
-        <p className={cn('text-xs text-muted-foreground line-clamp-2', !article.isRead && 'ml-4')}>
+        <p className={cn('text-muted-foreground line-clamp-2', !article.isRead && 'ml-4')} style={{ fontSize: '0.857em' }}>
           {summary}
         </p>
       )}
-      <div className={cn('flex items-center gap-2 text-xs text-muted-foreground mt-1', !article.isRead && 'ml-4')}>
+      <div className={cn('flex items-center gap-2 text-muted-foreground mt-1', !article.isRead && 'ml-4')} style={{ fontSize: '0.857em' }}>
         <span className="truncate max-w-32">{article.feedTitle}</span>
         <span>·</span>
         <span>{timeAgo}</span>
