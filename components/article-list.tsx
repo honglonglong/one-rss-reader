@@ -45,6 +45,30 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
   const [pullY, setPullY] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
+  const [listFontSize, setListFontSize] = useState(14)
+  const pinchStartDistRef = useRef(0)
+  const pinchStartFontRef = useRef(14)
+  const isPinchingRef = useRef(false)
+
+  useEffect(() => {
+    const saved = localStorage.getItem('articleListFontSize')
+    if (saved) {
+      const parsed = parseFloat(saved)
+      if (!isNaN(parsed)) setListFontSize(Math.min(22, Math.max(10, parsed)))
+    }
+  }, [])
+
+  // 阻止容器内的双指手势触发浏览器原生缩放（非 passive 监听才能 preventDefault）
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const preventBrowserPinch = (e: TouchEvent) => {
+      if (e.touches.length >= 2) e.preventDefault()
+    }
+    el.addEventListener('touchmove', preventBrowserPinch, { passive: false })
+    return () => el.removeEventListener('touchmove', preventBrowserPinch)
+  })
+
   // Reset pagination when switching feeds or views
   useEffect(() => {
     setDisplayLimit(PAGE_SIZE)
@@ -112,11 +136,29 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
   }
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      pinchStartDistRef.current = Math.hypot(dx, dy)
+      pinchStartFontRef.current = listFontSize
+      isPinchingRef.current = true
+      return
+    }
     if (!canPullRefresh) return
     touchStartYRef.current = e.touches[0].clientY
   }
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (isPinchingRef.current && e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.hypot(dx, dy)
+      if (pinchStartDistRef.current > 0) {
+        const scale = dist / pinchStartDistRef.current
+        setListFontSize(Math.min(22, Math.max(10, pinchStartFontRef.current * scale)))
+      }
+      return
+    }
     if (!canPullRefresh || isRefreshing) return
     const delta = e.touches[0].clientY - touchStartYRef.current
     if (delta <= 0) { setPullY(0); return }
@@ -126,6 +168,15 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
   }
 
   const handleTouchEnd = async () => {
+    if (isPinchingRef.current) {
+      isPinchingRef.current = false
+      pinchStartDistRef.current = 0
+      setListFontSize(prev => {
+        localStorage.setItem('articleListFontSize', String(Math.round(prev * 10) / 10))
+        return prev
+      })
+      return
+    }
     if (!canPullRefresh) return
     if (pullY >= 60 && !isRefreshing) {
       setIsRefreshing(true)
@@ -212,7 +263,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
         ) : null}
       </div>
       <ScrollArea className="flex-1 min-h-0">
-        <div className="flex flex-col">
+        <div className="flex flex-col" style={{ zoom: listFontSize / 14 }}>
           {articles.slice(0, displayLimit).map((article) => (
             <ArticleItem
               key={article.id}

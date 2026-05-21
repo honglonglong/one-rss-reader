@@ -2,12 +2,11 @@
 import { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs'
-import GlobalFontTab from './tabs/global-font-tab'
 import OPMLTab from './tabs/opml-tab'
 import SyncTab from './tabs/sync-tab'
 import HelpTab from './tabs/help-tab'
 
-export type SettingsTab = 'global-font' | 'import-export' | 'sync' | 'help'
+export type SettingsTab = 'import-export' | 'sync' | 'help'
 
 interface SettingsPanelProps {
   open: boolean
@@ -15,7 +14,7 @@ interface SettingsPanelProps {
   defaultTab?: SettingsTab
 }
 
-export default function SettingsPanel({ open, onOpenChange, defaultTab = 'global-font' }: SettingsPanelProps) {
+export default function SettingsPanel({ open, onOpenChange, defaultTab = 'import-export' }: SettingsPanelProps) {
   const [tab, setTab] = useState<SettingsTab>(defaultTab)
 
   return (
@@ -26,13 +25,11 @@ export default function SettingsPanel({ open, onOpenChange, defaultTab = 'global
           <DialogDescription className="sr-only">应用设置面板</DialogDescription>
         </DialogHeader>
         <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} className="w-full">
-          <TabsList className="grid grid-cols-4 w-full">
-            <TabsTrigger value="global-font">界面字体</TabsTrigger>
+          <TabsList className="grid grid-cols-3 w-full">
             <TabsTrigger value="import-export">OPML</TabsTrigger>
             <TabsTrigger value="sync">同步</TabsTrigger>
             <TabsTrigger value="help">帮助</TabsTrigger>
           </TabsList>
-          <TabsContent value="global-font"><GlobalFontTab /></TabsContent>
           <TabsContent value="import-export"><OPMLTab /></TabsContent>
           <TabsContent value="sync"><SyncTab /></TabsContent>
           <TabsContent value="help"><HelpTab /></TabsContent>
