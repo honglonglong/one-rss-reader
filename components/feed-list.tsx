@@ -321,8 +321,15 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
         </div>
       </ScrollArea>
 
-      <div className="px-4 py-2 border-t border-sidebar-border shrink-0">
+      <div className="px-4 py-2 border-t border-sidebar-border shrink-0 flex items-center gap-1">
         <p className="text-xs text-muted-foreground/60">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="text-muted-foreground/40 hover:text-muted-foreground/80 transition-colors"
+          title="刷新 App"
+        >
+          <RefreshCw className="size-3" />
+        </button>
       </div>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
