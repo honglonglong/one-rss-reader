@@ -52,7 +52,12 @@ async function parseFeedDirect(url: string): Promise<ParsedFeed> {
     },
   })
   const feedUrl = new URL(url)
-  const feed = await parser.parseURL(url)
+  const response = await fetch(url, {
+    headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' },
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  const text = await response.text()
+  const feed = await parser.parseString(text)
   return transformRssOutput(feed, feedUrl)
 }
 
