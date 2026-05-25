@@ -29,7 +29,6 @@ import { ReadingSettings } from './reading-settings'
 import { HighlightToolbar } from './highlight-toolbar'
 import type { Article, HighlightColor, Highlight } from '@/lib/types'
 import { toast } from 'sonner'
-import { useIsMobile } from '@/hooks/use-mobile'
 
 const COLOR_CLASSES: Record<HighlightColor, string> = {
   yellow: 'bg-yellow-200 dark:bg-yellow-900/50',
@@ -69,52 +68,6 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
   const contentRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  const isMobile = useIsMobile()
-  const swipeStartXRef = useRef(0)
-  const swipeStartYRef = useRef(0)
-  const isSwipingRef = useRef(false)
-  const swipeXRef = useRef(0)
-  const [swipeX, setSwipeX] = useState(0)
-  const [swipeTransition, setSwipeTransition] = useState(false)
-
-  const handleSwipeTouchStart = (e: React.TouchEvent) => {
-    if (!isMobile || !onClose) return
-    swipeStartXRef.current = e.touches[0].clientX
-    swipeStartYRef.current = e.touches[0].clientY
-    isSwipingRef.current = false
-    swipeXRef.current = 0
-    setSwipeTransition(false)
-  }
-
-  const handleSwipeTouchMove = (e: React.TouchEvent) => {
-    if (!isMobile || !onClose) return
-    const dx = e.touches[0].clientX - swipeStartXRef.current
-    const dy = e.touches[0].clientY - swipeStartYRef.current
-    if (!isSwipingRef.current) {
-      if (Math.abs(dx) > Math.abs(dy) && dx > 8) {
-        isSwipingRef.current = true
-      } else if (Math.abs(dy) > 10) {
-        return
-      }
-    }
-    if (isSwipingRef.current && dx > 0) {
-      swipeXRef.current = dx
-      setSwipeX(dx)
-    }
-  }
-
-  const handleSwipeTouchEnd = () => {
-    if (!isMobile || !onClose) return
-    if (isSwipingRef.current && swipeXRef.current > 80) {
-      onClose()
-    } else {
-      setSwipeTransition(true)
-      setSwipeX(0)
-      setTimeout(() => setSwipeTransition(false), 200)
-    }
-    isSwipingRef.current = false
-    swipeXRef.current = 0
-  }
   useEffect(() => {
     if (article && !article.isRead) {
       markAsRead(article.id)
@@ -235,11 +188,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
 
   return (
     <div
-      className={cn('flex h-full overflow-hidden', swipeTransition && 'transition-transform duration-200')}
-      style={swipeX > 0 ? { transform: `translateX(${swipeX}px)`, touchAction: 'pan-y' } : { touchAction: 'pan-y' }}
-      onTouchStart={handleSwipeTouchStart}
-      onTouchMove={handleSwipeTouchMove}
-      onTouchEnd={handleSwipeTouchEnd}
+      className="flex h-full overflow-hidden"
     >
       <div
         className={cn(
@@ -251,8 +200,8 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
         <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             {onClose && (
-              <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={onClose}>
-                <X className="size-4" />
+              <Button variant="ghost" size="icon" className="size-10 lg:size-8 shrink-0" onClick={onClose}>
+                <X className="size-8 lg:size-4" />
               </Button>
             )}
             <span className="text-sm text-muted-foreground truncate">
@@ -264,58 +213,58 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8"
+                className="size-10 lg:size-8"
                 onClick={onToggleExpand}
                 title={isExpanded ? '退出全屏' : '全屏阅读'}
               >
                 {isExpanded ? (
-                  <Minimize2 className="size-4" />
+                  <Minimize2 className="size-8 lg:size-4" />
                 ) : (
-                  <Maximize2 className="size-4" />
+                  <Maximize2 className="size-8 lg:size-4" />
                 )}
               </Button>
             )}
             <Button
               variant="ghost"
               size="icon"
-              className="size-8"
+              className="size-10 lg:size-8"
               onClick={() => setShowHighlights(!showHighlights)}
             >
               <ChevronRight
-                className={cn('size-4 transition-transform', showHighlights && 'rotate-180')}
+                className={cn('size-8 lg:size-4 transition-transform', showHighlights && 'rotate-180')}
               />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="size-8"
+              className="size-10 lg:size-8"
               onClick={handleExport}
               title="导出文章到 Markdown"
             >
-              <FileDown className="size-4" />
+              <FileDown className="size-8 lg:size-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="size-8"
+              className="size-10 lg:size-8"
               onClick={handleToggleSaved}
               title={article.isSaved ? '取消收藏' : '收藏'}
             >
               {article.isSaved ? (
-                <BookmarkCheck className="size-4 text-primary" />
+                <BookmarkCheck className="size-5 lg:size-4 text-primary" />
               ) : (
-                <Bookmark className="size-4" />
+                <Bookmark className="size-8 lg:size-4" />
               )}
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="size-8"
+              className="size-10 lg:size-8"
               asChild
               title="在浏览器中打开"
             >
               <a href={article.link} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="size-4" />
+                <ExternalLink className="size-8 lg:size-4" />
               </a>
             </Button>
             <ReadingSettings />

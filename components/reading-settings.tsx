@@ -18,8 +18,8 @@ export function ReadingSettings() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-8">
-          <Settings className="size-4" />
+        <Button variant="ghost" size="icon" className="size-10 lg:size-8">
+          <Settings className="size-8 lg:size-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-72" align="end">
