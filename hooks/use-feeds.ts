@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR, { useSWRConfig } from 'swr'
-import { getAllFeeds, addFeed, deleteFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed, updateFeed } from '@/lib/db'
+import { getAllFeeds, addFeed, deleteFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed, updateFeed, updateFeedLastRefreshed } from '@/lib/db'
 import { parseFeed, createFeedFromParsed } from '@/lib/rss-parser'
 import type { Feed } from '@/lib/types'
 
@@ -64,7 +64,14 @@ export function useFeeds() {
       ? feeds?.filter(f => f.id === feedId) || []
       : feeds || []
 
+    const FIVE_MINUTES = 5 * 60 * 1000
+
     for (const feed of feedsToRefresh) {
+      // Skip if refreshed within the last 5 minutes
+      if (feed.lastRefreshedAt && Date.now() - feed.lastRefreshedAt < FIVE_MINUTES) {
+        continue
+      }
+
       try {
         const parsed = await parseFeed(feed.url)
         const { articles } = createFeedFromParsed(parsed, feed.url)
@@ -99,6 +106,8 @@ export function useFeeds() {
             return readState ? { ...a, ...readState } : a
           })
         await addArticles(articlesToAdd)
+        // Record successful refresh time for the 5-minute cooldown
+        await updateFeedLastRefreshed(feed.id, Date.now())
       } catch (error) {
         console.error(`Failed to refresh feed ${feed.title}:`, error)
         if (feedId) throw error

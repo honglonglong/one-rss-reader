@@ -125,13 +125,14 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     }
   }, [article?.id])
 
-  // Force all links in article content to open in new tab
+  // Force all links in article content to open in new tab and ensure single-tap works on mobile
   useEffect(() => {
     if (!contentRef.current) return
     const links = contentRef.current.querySelectorAll<HTMLAnchorElement>('a[href]')
     links.forEach((link) => {
       link.setAttribute('target', '_blank')
       link.setAttribute('rel', 'noopener noreferrer')
+      link.style.touchAction = 'manipulation'
     })
   }, [article?.id])
 
@@ -235,7 +236,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
   return (
     <div
       className={cn('flex h-full overflow-hidden', swipeTransition && 'transition-transform duration-200')}
-      style={swipeX > 0 ? { transform: `translateX(${swipeX}px)` } : undefined}
+      style={swipeX > 0 ? { transform: `translateX(${swipeX}px)`, touchAction: 'pan-y' } : { touchAction: 'pan-y' }}
       onTouchStart={handleSwipeTouchStart}
       onTouchMove={handleSwipeTouchMove}
       onTouchEnd={handleSwipeTouchEnd}

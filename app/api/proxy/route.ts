@@ -31,8 +31,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 })
     }
 
-    // Fetch and parse the feed
-    const feed = await parser.parseURL(feedUrl.toString())
+    // Fetch and parse the feed.
+    // Use fetch + parseString instead of parseURL to avoid the deprecated url.parse() call
+    // that rss-parser uses internally in its parseURL implementation (Node.js DEP0169).
+    const fetchResponse = await fetch(feedUrl.toString(), {
+      headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' },
+    })
+    if (!fetchResponse.ok) {
+      return NextResponse.json(
+        { error: `Failed to fetch feed: HTTP ${fetchResponse.status}` },
+        { status: 502 }
+      )
+    }
+    const feedText = await fetchResponse.text()
+    const feed = await parser.parseString(feedText)
 
     // Extract favicon
     let favicon = ''

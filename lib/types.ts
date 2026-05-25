@@ -8,6 +8,7 @@ export interface Feed {
   description?: string
   favicon?: string
   lastUpdated: number
+  lastRefreshedAt?: number // 最近一次成功刷新的时间戳，用于冷却判断
   category?: string
   group?: string // 分组名称
   deletedAt?: number // 软删除时间戳；有值则视为已删除（同步时作为 tombstone 传播）

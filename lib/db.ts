@@ -164,6 +164,14 @@ export async function updateFeed(id: string, updates: Partial<Pick<Feed, 'title'
   }
 }
 
+export async function updateFeedLastRefreshed(id: string, ts: number): Promise<void> {
+  const db = await getDB()
+  const feed = await db.get('feeds', id)
+  if (feed) {
+    await db.put('feeds', { ...feed, lastRefreshedAt: ts })
+  }
+}
+
 // Article operations
 export async function addArticle(article: Article): Promise<void> {
   const db = await getDB()

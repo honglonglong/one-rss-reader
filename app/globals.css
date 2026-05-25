@@ -123,6 +123,10 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Eliminate iOS double-tap-to-activate on interactive elements */
+  a, button {
+    touch-action: manipulation;
+  }
 }
 
 /* Article content typography */
