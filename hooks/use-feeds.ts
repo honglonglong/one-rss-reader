@@ -5,6 +5,35 @@ import { getAllFeeds, addFeed, deleteFeed, getFeedByUrl, updateFeedGroup, addArt
 import { parseFeed, createFeedFromParsed } from '@/lib/rss-parser'
 import type { Feed } from '@/lib/types'
 
+const DEFAULT_INTERVAL = 60 * 60 * 1000        // 1 hour — used when no history is available
+const MIN_INTERVAL    = 30 * 60 * 1000        // 30 minutes minimum
+const MAX_INTERVAL    = 7  * 24 * 60 * 60 * 1000 // 7 days maximum
+
+/**
+ * Estimates a feed's update frequency from the publication dates of its articles.
+ * Uses the median inter-article interval of the 20 most-recent articles, clamped
+ * to [30 min, 7 days]. Falls back to 1 hour when fewer than 2 articles are available.
+ */
+function estimateUpdateInterval(articles: { pubDate: number }[]): number {
+  if (articles.length < 2) return DEFAULT_INTERVAL
+
+  const sorted = [...articles]
+    .sort((a, b) => b.pubDate - a.pubDate)
+    .slice(0, 20)
+
+  const intervals: number[] = []
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const diff = sorted[i].pubDate - sorted[i + 1].pubDate
+    if (diff > 0) intervals.push(diff)
+  }
+
+  if (intervals.length === 0) return DEFAULT_INTERVAL
+
+  intervals.sort((a, b) => a - b)
+  const median = intervals[Math.floor(intervals.length / 2)]
+  return Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, median))
+}
+
 export function useFeeds() {
   const { mutate: globalMutate } = useSWRConfig()
   const { data: feeds, error, isLoading, mutate } = useSWR<Feed[]>(
@@ -29,10 +58,14 @@ export function useFeeds() {
       feed.group = group
     }
 
+    // Estimate update frequency from initial articles so the first refresh
+    // cooldown is based on the feed's actual cadence, not the 1-hour default.
+    const estimatedInterval = estimateUpdateInterval(articles)
+
     if (existing?.deletedAt) {
       // Re-subscribe: restore the soft-deleted record keeping the same ID
       // (a new ID would conflict with the unique URL index still pointing to the old record)
-      const restoredFeed: Feed = { ...feed, id: existing.id, deletedAt: undefined }
+      const restoredFeed: Feed = { ...feed, id: existing.id, deletedAt: undefined, estimatedUpdateIntervalMs: estimatedInterval }
       await addFeed(restoredFeed)
       await addArticles(articles.map((a) => ({ ...a, feedId: existing.id, feedTitle: restoredFeed.title })))
       await mutate()
@@ -40,6 +73,7 @@ export function useFeeds() {
     }
 
     // Save to database
+    feed.estimatedUpdateIntervalMs = estimatedInterval
     await addFeed(feed)
     await addArticles(articles)
 
@@ -64,11 +98,10 @@ export function useFeeds() {
       ? feeds?.filter(f => f.id === feedId) || []
       : feeds || []
 
-    const FIVE_MINUTES = 5 * 60 * 1000
-
     for (const feed of feedsToRefresh) {
-      // Skip if refreshed within the last 5 minutes
-      if (feed.lastRefreshedAt && Date.now() - feed.lastRefreshedAt < FIVE_MINUTES) {
+      // Skip if last refresh is more recent than the feed's estimated update interval
+      const cooldown = feed.estimatedUpdateIntervalMs ?? DEFAULT_INTERVAL
+      if (feed.lastRefreshedAt && Date.now() - feed.lastRefreshedAt < cooldown) {
         continue
       }
 
@@ -106,8 +139,9 @@ export function useFeeds() {
             return readState ? { ...a, ...readState } : a
           })
         await addArticles(articlesToAdd)
-        // Record successful refresh time for the 5-minute cooldown
-        await updateFeedLastRefreshed(feed.id, Date.now())
+        // Re-estimate update interval from fresh articles and persist alongside refresh timestamp
+        const newInterval = estimateUpdateInterval(updatedArticles)
+        await updateFeedLastRefreshed(feed.id, Date.now(), newInterval)
       } catch (error) {
         console.error(`Failed to refresh feed ${feed.title}:`, error)
         if (feedId) throw error

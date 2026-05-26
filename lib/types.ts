@@ -9,6 +9,7 @@ export interface Feed {
   favicon?: string
   lastUpdated: number
   lastRefreshedAt?: number // 最近一次成功刷新的时间戳，用于冷却判断
+  estimatedUpdateIntervalMs?: number // 根据历史文章 pubDate 间隔推算的更新频率（毫秒）
   category?: string
   group?: string // 分组名称
   deletedAt?: number // 软删除时间戳；有值则视为已删除（同步时作为 tombstone 传播）
