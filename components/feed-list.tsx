@@ -80,7 +80,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
   const [refreshingFeedIds, setRefreshingFeedIds] = useState<Set<string>>(new Set())
-  const [failedFeedIds, setFailedFeedIds] = useState<Set<string>>(new Set())
+  const [feedErrors, setFeedErrors] = useState<Map<string, string>>(new Map())
   const isRefreshing = refreshingFeedIds.size > 0
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['__ungrouped__']))
   const [existingGroups, setExistingGroups] = useState<string[]>([])
@@ -128,10 +128,11 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
         setRefreshingFeedIds((prev) => new Set([...prev, feed.id]))
         try {
           await refresh(feed.id)
-          setFailedFeedIds((prev) => { const n = new Set(prev); n.delete(feed.id); return n })
-        } catch {
+          setFeedErrors((prev) => { const n = new Map(prev); n.delete(feed.id); return n })
+        } catch (error) {
           failCount++
-          setFailedFeedIds((prev) => new Set([...prev, feed.id]))
+          const msg = error instanceof Error ? error.message : '刷新失败'
+          setFeedErrors((prev) => new Map([...prev, [feed.id, msg]]))
         } finally {
           setRefreshingFeedIds((prev) => {
             const next = new Set(prev)
@@ -142,7 +143,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
       }
     }
     await Promise.all(
-      Array.from({ length: Math.min(5, feedsSnapshot.length) }, () => worker())
+      Array.from({ length: Math.min(2, feedsSnapshot.length) }, () => worker())
     )
     if (failCount === 0) {
       toast.success('已刷新所有订阅')
@@ -166,11 +167,12 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
     setRefreshingFeedIds((prev) => new Set([...prev, feedId]))
     refresh(feedId)
       .then(() => {
-        setFailedFeedIds((prev) => { const n = new Set(prev); n.delete(feedId); return n })
+        setFeedErrors((prev) => { const n = new Map(prev); n.delete(feedId); return n })
         toast.success('已刷新')
       })
-      .catch(() => {
-        setFailedFeedIds((prev) => new Set([...prev, feedId]))
+      .catch((error) => {
+        const msg = error instanceof Error ? error.message : '刷新失败'
+        setFeedErrors((prev) => new Map([...prev, [feedId, msg]]))
         toast.error('刷新失败')
       })
       .finally(() =>
@@ -313,7 +315,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
                   onEdit={setEditTarget}
                   unreadCounts={unreadCounts}
                   refreshingFeedIds={refreshingFeedIds}
-                  failedFeedIds={failedFeedIds}
+                  feedErrors={feedErrors}
                 />
               ))}
             </div>
@@ -373,7 +375,7 @@ interface FeedGroupItemProps {
   onEdit: (feed: Feed) => void
   unreadCounts: Record<string, number>
   refreshingFeedIds: Set<string>
-  failedFeedIds: Set<string>
+  feedErrors: Map<string, string>
 }
 
 function FeedGroupItem({
@@ -390,7 +392,7 @@ function FeedGroupItem({
   onEdit,
   unreadCounts,
   refreshingFeedIds,
-  failedFeedIds,
+  feedErrors,
 }: FeedGroupItemProps) {
   const isUngrouped = group.name === '__ungrouped__'
 
@@ -408,7 +410,7 @@ function FeedGroupItem({
             existingGroups={existingGroups}
             onLoadGroups={onLoadGroups}              onEdit={() => onEdit(feed)}          unreadCount={unreadCounts[feed.id] || 0}
             isRefreshing={refreshingFeedIds.has(feed.id)}
-            isFailed={failedFeedIds.has(feed.id)}
+            errorMessage={feedErrors.get(feed.id)}
           />
         ))}
       </>
@@ -457,7 +459,7 @@ function FeedGroupItem({
               onEdit={() => onEdit(feed)}
               unreadCount={unreadCounts[feed.id] || 0}
               isRefreshing={refreshingFeedIds.has(feed.id)}
-              isFailed={failedFeedIds.has(feed.id)}
+              errorMessage={feedErrors.get(feed.id)}
             />
           ))}
         </div>
@@ -477,7 +479,7 @@ interface FeedItemProps {
   onEdit: () => void
   unreadCount: number
   isRefreshing?: boolean
-  isFailed?: boolean
+  errorMessage?: string
 }
 
 function FeedItem({
@@ -491,11 +493,12 @@ function FeedItem({
   onEdit,
   unreadCount,
   isRefreshing,
-  isFailed,
+  errorMessage,
 }: FeedItemProps) {
   const [newGroupInput, setNewGroupInput] = useState('')
   const [showNewGroupInput, setShowNewGroupInput] = useState(false)
   const [faviconError, setFaviconError] = useState(false)
+  const [showErrorDialog, setShowErrorDialog] = useState(false)
 
   return (
     <div
@@ -507,7 +510,7 @@ function FeedItem({
     >
       {isRefreshing ? (
         <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
-      ) : isFailed ? (
+      ) : errorMessage ? (
         <AlertCircle className="size-4 text-destructive shrink-0" />
       ) : feed.favicon && !faviconError ? (
         <img
@@ -539,6 +542,18 @@ function FeedItem({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+          {errorMessage && (
+            <>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setShowErrorDialog(true)}
+              >
+                <AlertCircle className="size-4 mr-2" />
+                查看错误详情
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem onClick={onEdit}>
             <Pencil className="size-4 mr-2" />
             编辑订阅
@@ -553,6 +568,23 @@ function FeedItem({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {errorMessage && showErrorDialog && (
+        <Dialog open onOpenChange={(open) => { if (!open) setShowErrorDialog(false) }}>
+          <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="size-4" />
+                刷新失败
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground break-all">{errorMessage}</p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowErrorDialog(false)}>关闭</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

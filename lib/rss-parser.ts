@@ -1,4 +1,3 @@
-import Parser from 'rss-parser'
 import type { Feed, Article } from './types'
 import { stableFeedId, stableArticleId } from './db'
 
@@ -7,62 +6,7 @@ export interface ParsedFeed {
   articles: Omit<Article, 'id' | 'feedId' | 'feedTitle' | 'cachedAt' | 'isRead' | 'isSaved'>[]
 }
 
-// Rejects after `ms` milliseconds — used to bound the direct-fetch attempt
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
-  ])
-}
-
-// Convert rss-parser output to the shared ParsedFeed shape
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function transformRssOutput(feed: any, feedUrl: URL): ParsedFeed {
-  const favicon: string = feed.image?.url
-    ? (feed.image.url as string)
-    : `https://icons.duckduckgo.com/ip3/${feedUrl.hostname}.ico`
-
-  return {
-    feed: {
-      title: feed.title || 'Untitled Feed',
-      url: feedUrl.toString(),
-      siteUrl: feed.link || feedUrl.origin,
-      description: feed.description || '',
-      favicon,
-    },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    articles: (feed.items || []).slice(0, 50).map((item: any) => ({
-      title: item.title || 'Untitled',
-      content: item['content:encoded'] || item.content || item.contentSnippet || '',
-      summary: item.contentSnippet || item.summary || '',
-      link: item.link || '',
-      author: item['dc:creator'] || item.creator || item.author || '',
-      pubDate: item.pubDate ? new Date(item.pubDate).getTime() : Date.now(),
-    })),
-  }
-}
-
-// Attempt to parse the feed directly from the browser (CORS-permitting).
-// Throws on CORS failures, network errors, or timeouts — caller falls back to proxy.
-async function parseFeedDirect(url: string): Promise<ParsedFeed> {
-  const parser = new Parser({
-    customFields: {
-      feed: ['image', 'icon'],
-      item: ['content:encoded', 'dc:creator', 'media:content'],
-    },
-  })
-  const feedUrl = new URL(url)
-  const response = await fetch(url, {
-    headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' },
-  })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  const text = await response.text()
-  const feed = await parser.parseString(text)
-  return transformRssOutput(feed, feedUrl)
-}
-
-// Fallback: parse via server-side proxy (always succeeds for valid URLs)
-async function parseFeedViaProxy(url: string): Promise<ParsedFeed> {
+export async function parseFeed(url: string): Promise<ParsedFeed> {
   const response = await fetch('/api/proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -75,15 +19,6 @@ async function parseFeedViaProxy(url: string): Promise<ParsedFeed> {
   }
 
   return response.json()
-}
-
-export async function parseFeed(url: string): Promise<ParsedFeed> {
-  // Try direct (CORS) first with a 5-second cap; on any failure fall back to proxy
-  try {
-    return await withTimeout(parseFeedDirect(url), 5000)
-  } catch {
-    return await parseFeedViaProxy(url)
-  }
 }
 
 export function createFeedFromParsed(
