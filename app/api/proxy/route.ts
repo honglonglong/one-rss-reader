@@ -34,17 +34,41 @@ export async function POST(request: NextRequest) {
     // Fetch and parse the feed.
     // Use fetch + parseString instead of parseURL to avoid the deprecated url.parse() call
     // that rss-parser uses internally in its parseURL implementation (Node.js DEP0169).
-    const fetchResponse = await fetch(feedUrl.toString(), {
-      headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' },
-    })
+    // AbortController caps the outbound fetch at 8 s so we return a clean error before
+    // Vercel's 10-second function timeout kills the request with a generic 504.
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 8000)
+    let fetchResponse: Response
+    try {
+      fetchResponse = await fetch(feedUrl.toString(), {
+        signal: controller.signal,
+        headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' },
+      })
+    } catch (fetchError) {
+      const isTimeout = fetchError instanceof Error && fetchError.name === 'AbortError'
+      const msg = isTimeout
+        ? `Fetch timed out after 8 s for ${feedUrl.toString()}`
+        : `Network error fetching ${feedUrl.toString()}: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
+      console.error('[proxy] fetch error:', msg)
+      return NextResponse.json({ error: msg }, { status: 502 })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+
     if (!fetchResponse.ok) {
-      return NextResponse.json(
-        { error: `Failed to fetch feed: HTTP ${fetchResponse.status}` },
-        { status: 502 }
-      )
+      const msg = `Failed to fetch feed: HTTP ${fetchResponse.status} ${fetchResponse.statusText} — ${feedUrl.toString()}`
+      console.error('[proxy]', msg)
+      return NextResponse.json({ error: msg }, { status: 502 })
     }
     const feedText = await fetchResponse.text()
-    const feed = await parser.parseString(feedText)
+    let feed: Awaited<ReturnType<typeof parser.parseString>>
+    try {
+      feed = await parser.parseString(feedText)
+    } catch (parseError) {
+      const msg = `Failed to parse RSS/Atom feed from ${feedUrl.toString()}: ${parseError instanceof Error ? parseError.message : String(parseError)}`
+      console.error('[proxy] parse error:', msg)
+      return NextResponse.json({ error: msg }, { status: 422 })
+    }
 
     // Extract favicon
     let favicon = ''
@@ -75,9 +99,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('RSS proxy error:', error)
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error('[proxy] unexpected error:', msg, error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch feed' },
+      { error: `Unexpected error: ${msg}` },
       { status: 500 }
     )
   }

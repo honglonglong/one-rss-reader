@@ -4,7 +4,7 @@ A privacy-first, client-side RSS reader built as a Progressive Web App (PWA). Al
 
 ## Features
 
-- **RSS Feed Management** — Add, edit, and delete RSS feeds. Organize feeds into custom groups.
+- **RSS Feed Management** — Add, edit, and delete RSS feeds. Organize feeds into custom groups. The refresh of each feed will be smartly staggered to avoid overwhelming servers by detecting the frequency of new articles.
 - **OPML Import / Export** — Import your existing subscriptions from any RSS reader, or export them for backup or migration.
 - **Offline Reading (PWA)** — Install as a desktop/mobile app. Previously fetched articles remain readable without internet access.
 - **Highlights & Annotations** — Select text in any article to highlight it. Add personal notes to highlights.

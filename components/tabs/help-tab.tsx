@@ -15,6 +15,10 @@ export default function HelpTab() {
               <p className="text-xs text-muted-foreground">RSS 图标添加订阅，三点菜单编辑 / 删除 / 移入分组，↻ 图标刷新全部订阅。</p>
             </li>
             <li className="pl-6">
+              <p className="font-medium">智能刷新</p>
+              <p className="text-xs text-muted-foreground">每个订阅的刷新将根据新文章的频率智能错开，以避免对服务器造成过大压力。</p>
+            </li>
+            <li className="pl-6">
               <p className="font-medium">OPML 导入 / 导出</p>
               <p className="text-xs text-muted-foreground">在设置面板 OPML 标签页批量导入或导出订阅列表（.opml 格式），方便迁移与备份。</p>
             </li>
