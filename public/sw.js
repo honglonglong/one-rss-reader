@@ -15,7 +15,9 @@ self.addEventListener('install', (event) => {
       return cache.addAll(STATIC_ASSETS)
     })
   )
-  self.skipWaiting()
+  // Do NOT call self.skipWaiting() here — let the new SW wait until the user
+  // explicitly confirms the update (via SKIP_WAITING message below). This
+  // prevents the app from auto-reloading on every tab switch after a deploy.
 })
 
 // Activate event - clean up old caches

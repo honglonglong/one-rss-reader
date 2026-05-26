@@ -59,6 +59,7 @@ import {
 } from '@/components/ui/collapsible'
 import { useFeeds } from '@/hooks/use-feeds'
 import { useUnreadCounts } from '@/hooks/use-articles'
+import { useServiceWorker } from '@/hooks/use-offline'
 import { AddFeedDialog } from './add-feed-dialog'
 import SettingsPanel from './settings-panel'
 import { getAllGroups } from '@/lib/db'
@@ -73,9 +74,27 @@ interface FeedListProps {
   view: 'all' | 'feed' | 'saved' | 'highlights'
 }
 
+interface ChangelogEntry {
+  version: string
+  date: string
+  changes: string[]
+}
+
+/** Returns true if version string `a` is strictly greater than `b` (semver). */
+function semverGt(a: string, b: string): boolean {
+  const pa = a.split('.').map(Number)
+  const pb = b.split('.').map(Number)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (diff !== 0) return diff > 0
+  }
+  return false
+}
+
 export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelectHighlights, view }: FeedListProps) {
   const { feeds, unsubscribe, refresh, setFeedGroup, editFeed, isLoading } = useFeeds()
   const unreadCounts = useUnreadCounts()
+  const { update } = useServiceWorker()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
@@ -83,6 +102,31 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   const [feedErrors, setFeedErrors] = useState<Map<string, string>>(new Map())
   const isRefreshing = refreshingFeedIds.size > 0
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['__ungrouped__']))
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false)
+  const [updateChangelog, setUpdateChangelog] = useState<ChangelogEntry[]>([])
+
+  const handleRefreshClick = async () => {
+    setIsCheckingUpdate(true)
+    try {
+      // Use a timestamp query param to bypass the old SW's cache-first strategy.
+      // `cache: 'no-store'` alone is insufficient because the SW intercepts
+      // before the browser HTTP cache; a unique URL forces a network fetch.
+      const res = await fetch(`/changelog.json?_=${Date.now()}`)
+      const entries: ChangelogEntry[] = await res.json()
+      const currentVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? '0.0.0'
+      if (entries.length > 0 && semverGt(entries[0].version, currentVersion)) {
+        setUpdateChangelog(entries.filter((e) => semverGt(e.version, currentVersion)))
+        setShowUpdateDialog(true)
+      } else {
+        toast.success('已是最新版本')
+      }
+    } catch {
+      toast.error('检查更新失败，请检查网络连接')
+    } finally {
+      setIsCheckingUpdate(false)
+    }
+  }
   const [existingGroups, setExistingGroups] = useState<string[]>([])
 
   // 按分组整理订阅
@@ -326,13 +370,44 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
       <div className="px-4 py-2 border-t border-sidebar-border shrink-0 flex items-center gap-1">
         <p className="text-xs text-muted-foreground/60">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
         <button
-          onClick={() => window.location.reload()}
-          className="text-muted-foreground/40 hover:text-muted-foreground/80 transition-colors"
-          title="刷新 App"
+          onClick={handleRefreshClick}
+          disabled={isCheckingUpdate}
+          className="text-muted-foreground/40 hover:text-muted-foreground/80 transition-colors disabled:opacity-50"
+          title="检查更新"
         >
-          <RefreshCw className="size-3" />
+          {isCheckingUpdate
+            ? <Loader2 className="size-3 animate-spin" />
+            : <RefreshCw className="size-3" />}
         </button>
       </div>
+
+      <Dialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>发现新版本</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-64 overflow-y-auto space-y-4 py-2">
+            {updateChangelog.length > 0 ? (
+              updateChangelog.map((entry) => (
+                <div key={entry.version}>
+                  <p className="text-sm font-medium mb-1">v{entry.version} <span className="text-xs text-muted-foreground font-normal">{entry.date}</span></p>
+                  <ul className="text-sm text-muted-foreground space-y-0.5 list-disc list-inside">
+                    {entry.changes.map((c, i) => (
+                      <li key={i}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">有新版本可用，升级后应用将重新加载。</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUpdateDialog(false)}>取消</Button>
+            <Button onClick={() => { setShowUpdateDialog(false); update(); window.location.reload() }}>升级并重启</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
