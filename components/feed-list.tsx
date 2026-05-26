@@ -210,9 +210,9 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
     onSelectFeed(feedId)
     setRefreshingFeedIds((prev) => new Set([...prev, feedId]))
     refresh(feedId)
-      .then(() => {
+      .then((didRefresh) => {
         setFeedErrors((prev) => { const n = new Map(prev); n.delete(feedId); return n })
-        toast.success('已刷新')
+        if (didRefresh) toast.success('已刷新')
       })
       .catch((error) => {
         const msg = error instanceof Error ? error.message : '刷新失败'

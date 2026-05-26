@@ -93,10 +93,12 @@ export function useFeeds() {
     await mutate()
   }
 
-  const refresh = async (feedId?: string) => {
+  const refresh = async (feedId?: string): Promise<boolean> => {
     const feedsToRefresh = feedId 
       ? feeds?.filter(f => f.id === feedId) || []
       : feeds || []
+
+    let didRefresh = false
 
     for (const feed of feedsToRefresh) {
       // Skip if last refresh is more recent than the feed's estimated update interval
@@ -142,6 +144,7 @@ export function useFeeds() {
         // Re-estimate update interval from fresh articles and persist alongside refresh timestamp
         const newInterval = estimateUpdateInterval(updatedArticles)
         await updateFeedLastRefreshed(feed.id, Date.now(), newInterval)
+        didRefresh = true
       } catch (error) {
         console.error(`Failed to refresh feed ${feed.title}:`, error)
         if (feedId) throw error
@@ -151,6 +154,7 @@ export function useFeeds() {
     await mutate()
     await globalMutate((key: unknown) => typeof key === 'string' && key.startsWith('articles'))
     await globalMutate('unread-counts')
+    return didRefresh
   }
 
   const editFeed = async (feedId: string, updates: Partial<Pick<import('@/lib/types').Feed, 'title' | 'url' | 'group'>>) => {
