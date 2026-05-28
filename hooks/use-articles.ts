@@ -12,8 +12,52 @@ import {
   markAllArticlesAsRead,
   toggleArticleSaved,
   cleanupOldReadArticles,
+  updateArticleContent,
 } from '@/lib/db'
 import type { Article } from '@/lib/types'
+
+// ---------------------------------------------------------------------------
+// Content completeness helpers (client-side, no import needed)
+// ---------------------------------------------------------------------------
+
+/** Strip HTML tags and return plain text */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/** Returns true when the article content appears to be incomplete or absent */
+export function isContentIncomplete(content: string): boolean {
+  const text = stripHtml(content)
+  if (!text || text.length < 200) return true
+  const readMoreRe =
+    /阅读(全文|更多|原文)|查看(全文|原文|更多)|继续阅读|展开全文|read\s*more|full\s*(article|post|story)/i
+  return readMoreRe.test(text)
+}
+
+/**
+ * Searches the existing article HTML for a "read full article" anchor and
+ * returns its absolute URL, or null if none is found.
+ */
+export function findReadMoreUrl(content: string, articleLink: string): string | null {
+  if (typeof window === 'undefined') return null
+  const readMoreRe =
+    /阅读(全文|更多|原文)|查看(全文|原文|更多)|继续阅读|展开全文|read\s*more|full\s*(article|post|story)/i
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(content, 'text/html')
+  for (const a of Array.from(doc.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+    if (readMoreRe.test(a.textContent || '')) {
+      const href = a.getAttribute('href')
+      if (href) {
+        try {
+          return new URL(href, articleLink).toString()
+        } catch {
+          return href
+        }
+      }
+    }
+  }
+  return null
+}
 
 export function useArticles(feedId?: string, hideRead: boolean = false) {
   const { mutate: globalMutate } = useSWRConfig()
@@ -36,7 +80,7 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
     await markArticleAsRead(articleId)
     mutate(
       (current) => current?.map(a =>
-        a.id === articleId ? { ...a, isRead: true, readAt: new Date() } : a
+        a.id === articleId ? { ...a, isRead: true, readAt: Date.now() } : a
       ),
       { revalidate: false }
     )
@@ -62,6 +106,36 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
     return count
   }
 
+  /**
+   * Intelligently fetches and fills the full content for a single article.
+   * - If content is empty → fetch article.link
+   * - If content is incomplete → look for a "read more" link first, otherwise fetch article.link
+   * - Persists result with isContentManuallyFilled = true so refresh won't overwrite it
+   * - Calling again clears the flag first (force re-fetch)
+   */
+  const fetchFullContent = async (article: Article): Promise<void> => {
+    // Determine the URL to fetch
+    const readMoreUrl = findReadMoreUrl(article.content, article.link)
+    const targetUrl = readMoreUrl || article.link
+
+    const response = await fetch('/api/fetch-article', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: targetUrl }),
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: response.statusText }))
+      throw new Error(err.error || '抓取失败')
+    }
+
+    const { content } = await response.json()
+    await updateArticleContent(article.id, content, true)
+
+    // Refresh all caches that might include this article
+    await globalMutate((k: unknown) => typeof k === 'string' && k.startsWith('article'))
+  }
+
   return {
     articles: articles || [],
     isLoading,
@@ -70,6 +144,7 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
     toggleSaved,
     cleanup,
     markAllAsRead,
+    fetchFullContent,
     mutate,
   }
 }

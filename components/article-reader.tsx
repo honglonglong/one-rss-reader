@@ -15,12 +15,14 @@ import {
   Trash2,
   Maximize2,
   Minimize2,
+  Wand2,
+  Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { useArticles } from '@/hooks/use-articles'
+import { useArticles, useArticle } from '@/hooks/use-articles'
 import { useHighlights } from '@/hooks/use-highlights'
 import { useReadingSettings } from '@/hooks/use-reading-settings'
 import { sanitizeHtml, getReadingTime } from '@/lib/rss-parser'
@@ -52,7 +54,11 @@ interface ArticleReaderProps {
 }
 
 export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: ArticleReaderProps) {
-  const { markAsRead, toggleSaved } = useArticles()
+  const { markAsRead, toggleSaved, fetchFullContent } = useArticles()
+  // SWR-backed live view of the article — auto-refreshes after fetchFullContent
+  // invalidates the 'article-${id}' cache key via globalMutate.
+  const { article: liveArticle } = useArticle(article?.id ?? null)
+  const displayArticle = liveArticle ?? article!
   const { settings } = useReadingSettings()
   const { highlights, createHighlight, removeHighlight } = useHighlights(article?.id || null)
   
@@ -64,6 +70,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     containerSelector: string
   } | null>(null)
   const [showHighlights, setShowHighlights] = useState(false)
+  const [isFetchingContent, setIsFetchingContent] = useState(false)
   
   const contentRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -174,6 +181,19 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     toast.success(isSaved ? '已收藏' : '已取消收藏')
   }
 
+  const handleFetchFullContent = async () => {
+    if (!article || isFetchingContent) return
+    setIsFetchingContent(true)
+    try {
+      await fetchFullContent(article)
+      toast.success('已成功补全文章内容')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '补全文失败')
+    } finally {
+      setIsFetchingContent(false)
+    }
+  }
+
   if (!article) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-muted-foreground bg-muted/30">
@@ -182,9 +202,9 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     )
   }
 
-  const readingTime = getReadingTime(article.content)
-  const pubDate = new Date(article.pubDate)
-  const sanitizedContent = sanitizeHtml(article.content)
+  const readingTime = getReadingTime(displayArticle.content)
+  const pubDate = new Date(displayArticle.pubDate)
+  const sanitizedContent = sanitizeHtml(displayArticle.content)
 
   return (
     <div
@@ -205,7 +225,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               </Button>
             )}
             <span className="text-sm text-muted-foreground truncate">
-              {article.feedTitle}
+              {displayArticle.feedTitle}
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -237,6 +257,27 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
             <Button
               variant="ghost"
               size="icon"
+              className={cn(
+                'size-10 lg:size-8',
+                displayArticle.isContentManuallyFilled && 'text-primary'
+              )}
+              onClick={handleFetchFullContent}
+              disabled={isFetchingContent}
+              title={
+                displayArticle.isContentManuallyFilled
+                  ? '已补全文（点击重新抓取）'
+                  : '智能补全文'
+              }
+            >
+              {isFetchingContent ? (
+                <Loader2 className="size-8 lg:size-4 animate-spin" />
+              ) : (
+                <Wand2 className="size-8 lg:size-4" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               className="size-10 lg:size-8"
               onClick={handleExport}
               title="导出文章到 Markdown"
@@ -248,9 +289,9 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               size="icon"
               className="size-10 lg:size-8"
               onClick={handleToggleSaved}
-              title={article.isSaved ? '取消收藏' : '收藏'}
+              title={displayArticle.isSaved ? '取消收藏' : '收藏'}
             >
-              {article.isSaved ? (
+              {displayArticle.isSaved ? (
                 <BookmarkCheck className="size-5 lg:size-4 text-primary" />
               ) : (
                 <Bookmark className="size-8 lg:size-4" />
@@ -263,7 +304,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               asChild
               title="在浏览器中打开"
             >
-              <a href={article.link} target="_blank" rel="noopener noreferrer">
+              <a href={displayArticle.link} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="size-8 lg:size-4" />
               </a>
             </Button>
@@ -285,13 +326,13 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
                 className="font-bold leading-tight mb-4 text-balance"
                 style={{ fontSize: settings.fontSize * 1.5 }}
               >
-                {article.title}
-              </h1>
+              {displayArticle.title}
+            </h1>
               <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
-                {article.author && (
+                {displayArticle.author && (
                   <span className="flex items-center gap-1 text-sm">
                     <User className="size-3" />
-                    {article.author}
+                    {displayArticle.author}
                   </span>
                 )}
                 <span className="flex items-center gap-1 text-sm">

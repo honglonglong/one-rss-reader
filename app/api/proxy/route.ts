@@ -34,10 +34,10 @@ export async function POST(request: NextRequest) {
     // Fetch and parse the feed.
     // Use fetch + parseString instead of parseURL to avoid the deprecated url.parse() call
     // that rss-parser uses internally in its parseURL implementation (Node.js DEP0169).
-    // AbortController caps the outbound fetch at 8 s so we return a clean error before
+    // AbortController caps the outbound fetch at 15 s so we return a clean error before
     // Vercel's 10-second function timeout kills the request with a generic 504.
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 8000)
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
     let fetchResponse: Response
     try {
       fetchResponse = await fetch(feedUrl.toString(), {
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     } catch (fetchError) {
       const isTimeout = fetchError instanceof Error && fetchError.name === 'AbortError'
       const msg = isTimeout
-        ? `Fetch timed out after 8 s for ${feedUrl.toString()}`
+        ? `Fetch timed out after 15 s for ${feedUrl.toString()}`
         : `Network error fetching ${feedUrl.toString()}: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
       console.error('[proxy] fetch error:', msg)
       return NextResponse.json({ error: msg }, { status: 502 })

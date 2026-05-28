@@ -220,6 +220,23 @@ export async function markArticleAsRead(id: string): Promise<void> {
   }
 }
 
+export async function updateArticleContent(
+  id: string,
+  content: string,
+  manual: boolean
+): Promise<void> {
+  const db = await getDB()
+  const article = await db.get('articles', id)
+  if (article) {
+    await db.put('articles', {
+      ...article,
+      content,
+      isContentManuallyFilled: manual,
+      fullContentFetchedAt: manual ? Date.now() : undefined,
+    })
+  }
+}
+
 export async function markAllArticlesAsRead(feedId?: string): Promise<number> {
   const db = await getDB()
   const now = Date.now()

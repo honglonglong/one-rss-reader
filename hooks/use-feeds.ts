@@ -126,6 +126,13 @@ export function useFeeds() {
             .map((a) => [a.link, { isRead: true as const, readAt: a.readAt }])
         )
 
+        // 刷新前记录手动补全的内容（按 link 索引），刷新后恢复，避免用户补全的全文被覆盖
+        const manualContentByLink = new Map(
+          existingArticles
+            .filter((a) => a.isContentManuallyFilled)
+            .map((a) => [a.link, { content: a.content, isContentManuallyFilled: true as const, fullContentFetchedAt: a.fullContentFetchedAt }])
+        )
+
         // 只保留收藏的文章，非收藏文章由新拉取的内容替换
         await deleteNonSavedArticlesByFeed(feed.id)
         // 获取剩余收藏文章的链接，避免重复添加
@@ -133,12 +140,15 @@ export function useFeeds() {
         const savedLinks = new Set(savedArticles.map((a) => a.link))
         // 只保留 90 天内的文章，与云同步截断保持一致
         const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000
-        // 恢复之前已读的文章的已读状态
+        // 恢复之前已读状态和手动补全内容
         const articlesToAdd = updatedArticles
           .filter((a) => !savedLinks.has(a.link) && a.pubDate > ninetyDaysAgo)
           .map((a) => {
             const readState = readStateByLink.get(a.link)
-            return readState ? { ...a, ...readState } : a
+            const manualContent = manualContentByLink.get(a.link)
+            let result = readState ? { ...a, ...readState } : a
+            if (manualContent) result = { ...result, ...manualContent }
+            return result
           })
         await addArticles(articlesToAdd)
         // Re-estimate update interval from fresh articles and persist alongside refresh timestamp
