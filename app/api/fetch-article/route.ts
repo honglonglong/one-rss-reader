@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { JSDOM } from 'jsdom'
+import { parseHTML } from 'linkedom'
 import { Readability } from '@mozilla/readability'
 
 export async function POST(request: NextRequest) {
@@ -56,9 +56,14 @@ export async function POST(request: NextRequest) {
 
     const html = await fetchResponse.text()
 
-    // Use JSDOM + Readability to extract main article content
-    const dom = new JSDOM(html, { url: targetUrl.toString() })
-    const reader = new Readability(dom.window.document)
+    // Inject <base> tag so Readability can resolve relative URLs, then
+    // use linkedom (ESM-native, no CJS/ESM conflicts) + Readability
+    const htmlWithBase = html.replace(
+      /<head(\s[^>]*)?>/i,
+      (m) => m + `<base href="${targetUrl.toString()}">`,
+    )
+    const { document } = parseHTML(htmlWithBase)
+    const reader = new Readability(document as unknown as Document)
     const article = reader.parse()
 
     if (!article || !article.content) {

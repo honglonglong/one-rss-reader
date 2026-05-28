@@ -9,10 +9,10 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
-  },  
-  // jsdom and @mozilla/readability use CJS/ESM-mixed deps that Turbopack cannot
-  // bundle. Mark them as external so Node.js loads them natively at runtime.
-  serverExternalPackages: ['jsdom', '@mozilla/readability'],
+  },
+  // linkedom and @mozilla/readability are ESM packages; mark them external so
+  // Turbopack lets Node.js load them natively instead of trying to bundle them.
+  serverExternalPackages: ['linkedom', '@mozilla/readability'],
   env: {
     // Injected at build time; changes on every deploy so the SW URL changes
     // and the browser detects a new service worker version automatically.
