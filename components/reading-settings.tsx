@@ -1,6 +1,6 @@
 'use client'
 
-import { Settings, Sun, Moon, Type, Minus, Plus } from 'lucide-react'
+import { Sun, Moon, Type, Minus, Plus } from 'lucide-react'
 import {
   Popover,
   PopoverContent,
@@ -19,7 +19,7 @@ export function ReadingSettings() {
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="size-10 lg:size-8">
-          <Settings className="size-5 lg:size-4" />
+          <span className="text-sm font-semibold select-none leading-none">Aa</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-72 max-w-[calc(100vw-2rem)]" align="end">

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Rss, List, BookOpen } from 'lucide-react'
+import { Rss, List, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FeedList } from '@/components/feed-list'
 import { ArticleList } from '@/components/article-list'
@@ -13,6 +13,7 @@ import { useAppBadge } from '@/hooks/use-app-badge'
 import { cleanupOldReadArticles } from '@/lib/db'
 import type { Article } from '@/lib/types'
 import { SyncProvider } from '@/components/sync-provider'
+import SettingsPanel, { SettingsPanelContent } from '@/components/settings-panel'
 
 const FEED_LIST_WIDTH_KEY = 'feedListWidth'
 const FEED_LIST_MIN_WIDTH = 160
@@ -39,7 +40,7 @@ export default function Home() {
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null)
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null)
   const [view, setView] = useState<View>('all')
-  const [mobileView, setMobileView] = useState<'feeds' | 'articles' | 'reader'>('articles')
+  const [mobileView, setMobileView] = useState<'feeds' | 'articles' | 'reader' | 'settings'>('articles')
   const [isReaderExpanded, setIsReaderExpanded] = useState(false)
   const [feedListWidth, setFeedListWidth] = useState<number>(FEED_LIST_DEFAULT_WIDTH)
   const isResizingRef = useRef(false)
@@ -141,7 +142,7 @@ export default function Home() {
     const mobileNavItems = [
       { id: 'feeds' as const, icon: Rss, label: '订阅' },
       { id: 'articles' as const, icon: List, label: '文章' },
-      { id: 'reader' as const, icon: BookOpen, label: '阅读' },
+      { id: 'settings' as const, icon: Settings, label: '设置' },
     ]
     return (
       <SyncProvider>
@@ -171,24 +172,27 @@ export default function Home() {
           {mobileView === 'reader' && (
             <ArticleReader article={selectedArticle} onClose={handleCloseArticle} />
           )}
+          {mobileView === 'settings' && (
+            <div className="h-full overflow-y-auto p-4">
+              <h2 className="font-semibold text-lg mb-4">设置</h2>
+              <SettingsPanelContent />
+            </div>
+          )}
         </div>
 
         {/* Bottom navigation */}
         <nav className="shrink-0 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]">
           <div className="flex">
             {mobileNavItems.map(({ id, icon: Icon, label }) => {
-              const disabled = id === 'reader' && !selectedArticle
               const active = mobileView === id
               return (
                 <button
                   key={id}
                   className={cn(
                     'flex-1 flex flex-col items-center justify-center gap-1 min-h-[44px] py-2 text-xs transition-colors',
-                    active ? 'text-primary' : 'text-muted-foreground',
-                    disabled ? 'opacity-40 pointer-events-none' : 'hover:text-foreground'
+                    active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
                   )}
-                  onClick={() => !disabled && setMobileView(id)}
-                  disabled={disabled}
+                  onClick={() => setMobileView(id)}
                 >
                   <Icon className="size-5" />
                   {label}

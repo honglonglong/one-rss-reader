@@ -17,6 +17,7 @@ import {
   StickyNote,
   Pencil,
   AlertCircle,
+  Plus,
   Settings as SettingsIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -290,14 +291,14 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
           <AddFeedDialog
             trigger={
               <Button variant="ghost" size="icon" className="size-10 lg:size-8">
-                <Rss className="size-5 lg:size-4" />
+                <Plus className="size-5 lg:size-4" />
               </Button>
             }
           />
           <Button
             variant="ghost"
             size="icon"
-            className="size-10 lg:size-8"
+            className="hidden md:inline-flex size-10 lg:size-8"
             title="设置"
             onClick={() => setSettingsOpen(true)}
           >
