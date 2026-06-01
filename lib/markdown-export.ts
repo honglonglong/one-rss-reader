@@ -119,7 +119,7 @@ export function generateMarkdown(
   }
 
   md += `---\n\n`
-  md += `*由 One RSS Reader 导出*\n`
+  md += `*由 One Reader 导出*\n`
 
   return md
 }
@@ -176,6 +176,6 @@ export function generateAllHighlightsMarkdown(
     md += `---\n\n`
   }
 
-  md += `*由 One RSS Reader 导出*\n`
+  md += `*由 One Reader 导出*\n`
   return md
 }

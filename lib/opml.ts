@@ -33,7 +33,7 @@ export function parseOPML(xmlString: string): OPMLOutline[] {
 }
 
 // Generate OPML XML string from feeds
-export function generateOPML(feeds: Feed[], title: string = 'One RSS Reader Subscriptions'): string {
+export function generateOPML(feeds: Feed[], title: string = 'One Reader Subscriptions'): string {
   const now = new Date().toUTCString()
   
   const outlines = feeds
