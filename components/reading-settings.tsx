@@ -19,10 +19,10 @@ export function ReadingSettings() {
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="size-10 lg:size-8">
-          <Settings className="size-8 lg:size-4" />
+          <Settings className="size-5 lg:size-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-72" align="end">
+      <PopoverContent className="w-72 max-w-[calc(100vw-2rem)]" align="end">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label className="text-xs text-muted-foreground">主题</Label>
@@ -77,7 +77,7 @@ export function ReadingSettings() {
               <Button
                 variant="outline"
                 size="icon"
-                className="size-7"
+                className="size-9 sm:size-7"
                 onClick={() => updateSettings({ fontSize: Math.max(14, settings.fontSize - 2) })}
               >
                 <Minus className="size-3" />
@@ -93,7 +93,7 @@ export function ReadingSettings() {
               <Button
                 variant="outline"
                 size="icon"
-                className="size-7"
+                className="size-9 sm:size-7"
                 onClick={() => updateSettings({ fontSize: Math.min(24, settings.fontSize + 2) })}
               >
                 <Plus className="size-3" />

@@ -60,6 +60,7 @@ import {
 import { useFeeds } from '@/hooks/use-feeds'
 import { useUnreadCounts } from '@/hooks/use-articles'
 import { useServiceWorker } from '@/hooks/use-offline'
+import { useListFontSize } from '@/hooks/use-list-font-size'
 import { AddFeedDialog } from './add-feed-dialog'
 import SettingsPanel from './settings-panel'
 import { getAllGroups } from '@/lib/db'
@@ -95,6 +96,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   const { feeds, unsubscribe, refresh, setFeedGroup, editFeed, isLoading } = useFeeds()
   const unreadCounts = useUnreadCounts()
   const { update } = useServiceWorker()
+  const { listFontSize } = useListFontSize()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
@@ -279,37 +281,37 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
+            className="size-10 lg:size-8"
             onClick={handleRefresh}
             disabled={isRefreshing}
           >
-            <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin')} />
+            <RefreshCw className={cn('size-5 lg:size-4', isRefreshing && 'animate-spin')} />
           </Button>
           <AddFeedDialog
             trigger={
-              <Button variant="ghost" size="icon" className="size-8">
-                <Rss className="size-4" />
+              <Button variant="ghost" size="icon" className="size-10 lg:size-8">
+                <Rss className="size-5 lg:size-4" />
               </Button>
             }
           />
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
+            className="size-10 lg:size-8"
             title="设置"
             onClick={() => setSettingsOpen(true)}
           >
-            <SettingsIcon className="size-4" />
+            <SettingsIcon className="size-5 lg:size-4" />
           </Button>
           <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} />
         </div>
       </div>
 
       <ScrollArea className="flex-1 min-h-0">
-        <div className="p-2">
+        <div className="p-2" style={{ fontSize: `${listFontSize}px` }}>
           <Button
             variant={view === 'all' ? 'secondary' : 'ghost'}
-            className="w-full justify-start gap-2 mb-1"
+            className="w-full justify-start gap-2 mb-1 text-[1em]"
             onClick={() => onSelectFeed(null)}
           >
             <Home className="size-4" />
@@ -317,7 +319,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
           </Button>
           <Button
             variant={view === 'highlights' ? 'secondary' : 'ghost'}
-            className="w-full justify-start gap-2 mb-1"
+            className="w-full justify-start gap-2 mb-1 text-[1em]"
             onClick={onSelectHighlights}
           >
             <StickyNote className="size-4" />
@@ -325,7 +327,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
           </Button>
           <Button
             variant={view === 'saved' ? 'secondary' : 'ghost'}
-            className="w-full justify-start gap-2 mb-2"
+            className="w-full justify-start gap-2 mb-2 text-[1em]"
             onClick={onSelectSaved}
           >
             <Bookmark className="size-4" />
@@ -337,7 +339,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
             </div>
           ) : feeds.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">
+            <div className="text-center py-8 text-muted-foreground text-[1em]">
               <p>暂无订阅</p>
               <p className="mt-1">点击上方按钮添加</p>
             </div>
@@ -372,7 +374,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
         <button
           onClick={handleRefreshClick}
           disabled={isCheckingUpdate}
-          className="text-muted-foreground/40 hover:text-muted-foreground/80 transition-colors disabled:opacity-50"
+          className="p-1.5 text-muted-foreground/40 hover:text-muted-foreground/80 transition-colors disabled:opacity-50"
           title="检查更新"
         >
           {isCheckingUpdate
@@ -495,7 +497,7 @@ function FeedGroupItem({
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>
       <CollapsibleTrigger asChild>
-        <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent text-sm text-sidebar-foreground">
+        <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent text-[1em] text-sidebar-foreground">
           {isExpanded ? (
             <ChevronDown className="size-4 text-muted-foreground" />
           ) : (
@@ -514,7 +516,7 @@ function FeedGroupItem({
                 {total > 99 ? '99+' : total}
               </span>
             ) : (
-              <span className="text-xs text-muted-foreground">{group.feeds.length}</span>
+              <span className="text-[0.75em] text-muted-foreground">{group.feeds.length}</span>
             )
           })()}
         </button>
@@ -597,7 +599,7 @@ function FeedItem({
       ) : (
         <Rss className="size-4 text-muted-foreground shrink-0" />
       )}
-      <span className="flex-1 truncate text-sm text-sidebar-foreground">
+      <span className="flex-1 truncate text-[1em] text-sidebar-foreground">
         {feed.title}
       </span>
       {unreadCount > 0 && (
@@ -610,7 +612,7 @@ function FeedItem({
           <Button
             variant="ghost"
             size="icon"
-            className="size-6 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+            className="size-8 lg:size-6 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             <MoreHorizontal className="size-3" />

@@ -1,15 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Menu, X } from 'lucide-react'
+import { Rss, List, BookOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import { FeedList } from '@/components/feed-list'
 import { ArticleList } from '@/components/article-list'
 import { ArticleReader } from '@/components/article-reader'
 import { HighlightsPanel } from '@/components/highlights-panel'
 import { OfflineIndicator } from '@/components/offline-indicator'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { useIsMobile, useIsTablet } from '@/hooks/use-mobile'
 import { useAppBadge } from '@/hooks/use-app-badge'
 import { cleanupOldReadArticles } from '@/lib/db'
 import type { Article } from '@/lib/types'
@@ -24,6 +23,7 @@ type View = 'all' | 'feed' | 'saved' | 'highlights'
 
 export default function Home() {
   const isMobile = useIsMobile()
+  const isTablet = useIsTablet()
   useAppBadge()
 
   // Auto-cleanup old read articles once per day
@@ -39,7 +39,7 @@ export default function Home() {
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null)
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null)
   const [view, setView] = useState<View>('all')
-  const [showSidebar, setShowSidebar] = useState(false)
+  const [mobileView, setMobileView] = useState<'feeds' | 'articles' | 'reader'>('articles')
   const [isReaderExpanded, setIsReaderExpanded] = useState(false)
   const [feedListWidth, setFeedListWidth] = useState<number>(FEED_LIST_DEFAULT_WIDTH)
   const isResizingRef = useRef(false)
@@ -54,13 +54,6 @@ export default function Home() {
       if (!isNaN(parsed)) setFeedListWidth(parsed)
     }
   }, [])
-
-  // Reset mobile sidebar when switching views
-  useEffect(() => {
-    if (isMobile) {
-      setShowSidebar(false)
-    }
-  }, [selectedArticle, isMobile])
 
   // ESC 键退出全屏阅读
   useEffect(() => {
@@ -109,6 +102,7 @@ export default function Home() {
     setView(feedId ? 'feed' : 'all')
     setSelectedArticle(null)
     setIsReaderExpanded(false)
+    setMobileView('articles')
   }
 
   const handleSelectSaved = () => {
@@ -116,6 +110,7 @@ export default function Home() {
     setView('saved')
     setSelectedArticle(null)
     setIsReaderExpanded(false)
+    setMobileView('articles')
   }
 
   const handleSelectHighlights = () => {
@@ -123,82 +118,49 @@ export default function Home() {
     setView('highlights')
     setSelectedArticle(null)
     setIsReaderExpanded(false)
+    setMobileView('articles')
   }
 
   const handleSelectArticle = (article: Article) => {
     setSelectedArticle(article)
+    setMobileView('reader')
   }
 
   const handleCloseArticle = () => {
     setSelectedArticle(null)
     setIsReaderExpanded(false)
+    setMobileView('articles')
   }
 
   const handleToggleExpand = () => {
     setIsReaderExpanded(!isReaderExpanded)
   }
 
-  // Mobile layout
+  // Mobile layout — bottom navigation
   if (isMobile) {
+    const mobileNavItems = [
+      { id: 'feeds' as const, icon: Rss, label: '订阅' },
+      { id: 'articles' as const, icon: List, label: '文章' },
+      { id: 'reader' as const, icon: BookOpen, label: '阅读' },
+    ]
     return (
       <SyncProvider>
       <div className="h-dvh flex flex-col bg-background">
-        {/* Mobile header */}
-        <header className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-9"
-              onClick={() => setShowSidebar(!showSidebar)}
-            >
-              {showSidebar ? <X className="size-5" /> : <Menu className="size-5" />}
-            </Button>
-            <h1 className="font-semibold">One RSS Reader</h1>
-          </div>
-        </header>
-
-        {/* Mobile content */}
-        <div className="flex-1 relative overflow-hidden">
-          {/* Sidebar overlay */}
-          {showSidebar && (
-            <div
-              className="absolute inset-0 bg-background/80 backdrop-blur-sm z-30"
-              onClick={() => setShowSidebar(false)}
-            />
-          )}
-
-          {/* Sidebar */}
-          <div
-            className={cn(
-              'absolute inset-y-0 left-0 w-72 z-40 transition-transform duration-200',
-              showSidebar ? 'translate-x-0' : '-translate-x-full'
-            )}
-          >
+        {/* Main content */}
+        <div className="flex-1 overflow-hidden">
+          {mobileView === 'feeds' && (
             <FeedList
               selectedFeedId={selectedFeedId}
-              onSelectFeed={(id) => {
-                handleSelectFeed(id)
-                setShowSidebar(false)
-              }}
-              onSelectSaved={() => {
-                handleSelectSaved()
-                setShowSidebar(false)
-              }}
-              onSelectHighlights={() => {
-                handleSelectHighlights()
-                setShowSidebar(false)
-              }}
+              onSelectFeed={handleSelectFeed}
+              onSelectSaved={handleSelectSaved}
+              onSelectHighlights={handleSelectHighlights}
               view={view}
             />
-          </div>
-
-          {/* Main content */}
-          {selectedArticle ? (
-            <ArticleReader article={selectedArticle} onClose={handleCloseArticle} />
-          ) : view === 'highlights' ? (
+          )}
+          {mobileView === 'articles' && view === 'highlights' && (
             <HighlightsPanel onOpenArticle={handleSelectArticle} />
-          ) : (
+          )}
+          {mobileView === 'articles' && view !== 'highlights' && (
             <ArticleList
               feedId={selectedFeedId}
               view={view}
@@ -206,7 +168,78 @@ export default function Home() {
               onSelectArticle={handleSelectArticle}
             />
           )}
+          {mobileView === 'reader' && (
+            <ArticleReader article={selectedArticle} onClose={handleCloseArticle} />
+          )}
         </div>
+
+        {/* Bottom navigation */}
+        <nav className="shrink-0 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]">
+          <div className="flex">
+            {mobileNavItems.map(({ id, icon: Icon, label }) => {
+              const disabled = id === 'reader' && !selectedArticle
+              const active = mobileView === id
+              return (
+                <button
+                  key={id}
+                  className={cn(
+                    'flex-1 flex flex-col items-center justify-center gap-1 min-h-[44px] py-2 text-xs transition-colors',
+                    active ? 'text-primary' : 'text-muted-foreground',
+                    disabled ? 'opacity-40 pointer-events-none' : 'hover:text-foreground'
+                  )}
+                  onClick={() => !disabled && setMobileView(id)}
+                  disabled={disabled}
+                >
+                  <Icon className="size-5" />
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </nav>
+
+        <OfflineIndicator />
+      </div>
+      </SyncProvider>
+    )
+  }
+
+  // Tablet layout — two columns, full-screen reader overlay
+  if (isTablet) {
+    return (
+      <SyncProvider>
+      <div className="h-dvh flex bg-background overflow-hidden relative">
+        {/* Left: Feed list */}
+        <div className="w-[280px] shrink-0 h-full overflow-hidden border-r border-border">
+          <FeedList
+            selectedFeedId={selectedFeedId}
+            onSelectFeed={handleSelectFeed}
+            onSelectSaved={handleSelectSaved}
+            onSelectHighlights={handleSelectHighlights}
+            view={view}
+          />
+        </div>
+
+        {/* Right: Article list or Highlights */}
+        <div className="flex-1 min-w-0 h-full overflow-hidden">
+          {view === 'highlights' ? (
+            <HighlightsPanel onOpenArticle={handleSelectArticle} />
+          ) : (
+            <ArticleList
+              feedId={selectedFeedId}
+              view={view}
+              selectedArticleId={selectedArticle?.id || null}
+              onSelectArticle={handleSelectArticle}
+            />
+          )}
+        </div>
+
+        {/* Full-screen reader overlay */}
+        {selectedArticle && (
+          <div className="absolute inset-0 z-50 bg-background animate-in slide-in-from-right duration-300">
+            <ArticleReader article={selectedArticle} onClose={handleCloseArticle} />
+          </div>
+        )}
 
         <OfflineIndicator />
       </div>

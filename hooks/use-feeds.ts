@@ -101,9 +101,17 @@ export function useFeeds() {
     let didRefresh = false
 
     for (const feed of feedsToRefresh) {
-      // Skip if last refresh is more recent than the feed's estimated update interval
       const cooldown = feed.estimatedUpdateIntervalMs ?? DEFAULT_INTERVAL
-      if (feed.lastRefreshedAt && Date.now() - feed.lastRefreshedAt < cooldown) {
+      const existingArticles = await getArticlesByFeed(feed.id)
+      const latestArticle = existingArticles[0]
+      const isLatestArticleStale = latestArticle
+        ? Date.now() - latestArticle.pubDate > cooldown
+        : false
+
+      // Skip if last refresh is more recent than the feed's estimated update
+      // interval, unless the local latest article is already older than that
+      // interval, in which case we need to refresh it immediately.
+      if (feed.lastRefreshedAt && Date.now() - feed.lastRefreshedAt < cooldown && !isLatestArticleStale) {
         continue
       }
 
@@ -119,7 +127,6 @@ export function useFeeds() {
         }))
         
         // 刷新前记录已读状态（按 link 索引），刷新后恢复，避免已读标记丢失
-        const existingArticles = await getArticlesByFeed(feed.id)
         const readStateByLink = new Map(
           existingArticles
             .filter((a) => a.isRead)

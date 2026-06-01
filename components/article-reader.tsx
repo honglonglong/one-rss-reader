@@ -29,6 +29,8 @@ import { sanitizeHtml, getReadingTime } from '@/lib/rss-parser'
 import { generateMarkdown, downloadMarkdown, generateFilename } from '@/lib/markdown-export'
 import { ReadingSettings } from './reading-settings'
 import { HighlightToolbar } from './highlight-toolbar'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import type { Article, HighlightColor, Highlight } from '@/lib/types'
 import { toast } from 'sonner'
 
@@ -61,6 +63,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
   const displayArticle = liveArticle ?? article!
   const { settings } = useReadingSettings()
   const { highlights, createHighlight, removeHighlight } = useHighlights(article?.id || null)
+  const isMobile = useIsMobile()
   
   const [toolbarPosition, setToolbarPosition] = useState<{ x: number; y: number } | null>(null)
   const [selectedText, setSelectedText] = useState('')
@@ -221,7 +224,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
           <div className="flex items-center gap-2 min-w-0">
             {onClose && (
               <Button variant="ghost" size="icon" className="size-10 lg:size-8 shrink-0" onClick={onClose}>
-                <X className="size-8 lg:size-4" />
+                <X className="size-5 lg:size-4" />
               </Button>
             )}
             <span className="text-sm text-muted-foreground truncate">
@@ -238,9 +241,9 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
                 title={isExpanded ? '退出全屏' : '全屏阅读'}
               >
                 {isExpanded ? (
-                  <Minimize2 className="size-8 lg:size-4" />
+                  <Minimize2 className="size-5 lg:size-4" />
                 ) : (
-                  <Maximize2 className="size-8 lg:size-4" />
+                  <Maximize2 className="size-5 lg:size-4" />
                 )}
               </Button>
             )}
@@ -251,7 +254,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               onClick={() => setShowHighlights(!showHighlights)}
             >
               <ChevronRight
-                className={cn('size-8 lg:size-4 transition-transform', showHighlights && 'rotate-180')}
+                className={cn('size-5 lg:size-4 transition-transform', showHighlights && 'rotate-180')}
               />
             </Button>
             <Button
@@ -270,9 +273,9 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               }
             >
               {isFetchingContent ? (
-                <Loader2 className="size-8 lg:size-4 animate-spin" />
+                <Loader2 className="size-5 lg:size-4 animate-spin" />
               ) : (
-                <Wand2 className="size-8 lg:size-4" />
+                <Wand2 className="size-5 lg:size-4" />
               )}
             </Button>
             <Button
@@ -282,7 +285,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               onClick={handleExport}
               title="导出文章到 Markdown"
             >
-              <FileDown className="size-8 lg:size-4" />
+              <FileDown className="size-5 lg:size-4" />
             </Button>
             <Button
               variant="ghost"
@@ -294,7 +297,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               {displayArticle.isSaved ? (
                 <BookmarkCheck className="size-5 lg:size-4 text-primary" />
               ) : (
-                <Bookmark className="size-8 lg:size-4" />
+                <Bookmark className="size-5 lg:size-4" />
               )}
             </Button>
             <Button
@@ -305,7 +308,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               title="在浏览器中打开"
             >
               <a href={displayArticle.link} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="size-8 lg:size-4" />
+                <ExternalLink className="size-5 lg:size-4" />
               </a>
             </Button>
             <ReadingSettings />
@@ -376,33 +379,61 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
         />
       </div>
 
-      {/* Highlights sidebar - 独立滚动 */}
-      {showHighlights && (
-        <div className="w-72 border-l border-border flex flex-col bg-muted/30 shrink-0 overflow-hidden">
-          <div className="p-4 border-b border-border shrink-0">
-            <h3 className="font-semibold">高亮与笔记</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              {highlights.length} 条高亮
-            </p>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            <div className="p-3 flex flex-col gap-3">
-              {highlights.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  选中文字添加高亮
-                </p>
-              ) : (
-                highlights.map((h) => (
-                  <HighlightCard
-                    key={h.id}
-                    highlight={h}
-                    onDelete={() => removeHighlight(h.id)}
-                  />
-                ))
-              )}
+      {/* Highlights sidebar - desktop/tablet, or bottom sheet on mobile */}
+      {isMobile ? (
+        <Sheet open={showHighlights} onOpenChange={setShowHighlights}>
+          <SheetContent side="bottom" className="h-[70vh] flex flex-col">
+            <SheetHeader className="shrink-0">
+              <SheetTitle>高亮与笔记</SheetTitle>
+              <p className="text-xs text-muted-foreground">{highlights.length} 条高亮</p>
+            </SheetHeader>
+            <div className="flex-1 overflow-y-auto">
+              <div className="p-3 flex flex-col gap-3">
+                {highlights.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    选中文字添加高亮
+                  </p>
+                ) : (
+                  highlights.map((h) => (
+                    <HighlightCard
+                      key={h.id}
+                      highlight={h}
+                      onDelete={() => removeHighlight(h.id)}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      ) : (
+        showHighlights && (
+          <div className="w-72 border-l border-border flex flex-col bg-muted/30 shrink-0 overflow-hidden">
+            <div className="p-4 border-b border-border shrink-0">
+              <h3 className="font-semibold">高亮与笔记</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                {highlights.length} 条高亮
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <div className="p-3 flex flex-col gap-3">
+                {highlights.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    选中文字添加高亮
+                  </p>
+                ) : (
+                  highlights.map((h) => (
+                    <HighlightCard
+                      key={h.id}
+                      highlight={h}
+                      onDelete={() => removeHighlight(h.id)}
+                    />
+                  ))
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )
       )}
     </div>
   )

@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { Bookmark, BookmarkCheck, Loader2, Eye, EyeOff, Trash2, HardDriveDownload, CheckCheck, ChevronDown } from 'lucide-react'
+import { Bookmark, BookmarkCheck, Loader2, Eye, EyeOff, Trash2, HardDriveDownload, CheckCheck, ChevronDown, Inbox } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useArticles, useSavedArticles } from '@/hooks/use-articles'
 import { useReadingSettings } from '@/hooks/use-reading-settings'
+import { useListFontSize } from '@/hooks/use-list-font-size'
 import { useFeeds } from '@/hooks/use-feeds'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { htmlToText, getReadingTime } from '@/lib/rss-parser'
@@ -45,18 +46,10 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
   const [pullY, setPullY] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const [listFontSize, setListFontSize] = useState(14)
+  const { listFontSize, updateListFontSize } = useListFontSize()
   const pinchStartDistRef = useRef(0)
   const pinchStartFontRef = useRef(14)
   const isPinchingRef = useRef(false)
-
-  useEffect(() => {
-    const saved = localStorage.getItem('articleListFontSize')
-    if (saved) {
-      const parsed = parseFloat(saved)
-      if (!isNaN(parsed)) setListFontSize(Math.min(22, Math.max(10, parsed)))
-    }
-  }, [])
 
   // 阻止容器内的双指手势触发浏览器原生缩放（非 passive 监听才能 preventDefault）
   useEffect(() => {
@@ -155,7 +148,8 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
       const dist = Math.hypot(dx, dy)
       if (pinchStartDistRef.current > 0) {
         const scale = dist / pinchStartDistRef.current
-        setListFontSize(Math.min(22, Math.max(10, pinchStartFontRef.current * scale)))
+        const next = Math.min(22, Math.max(10, pinchStartFontRef.current * scale))
+        updateListFontSize(next)
       }
       return
     }
@@ -171,10 +165,6 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
     if (isPinchingRef.current) {
       isPinchingRef.current = false
       pinchStartDistRef.current = 0
-      setListFontSize(prev => {
-        localStorage.setItem('articleListFontSize', String(Math.round(prev * 10) / 10))
-        return prev
-      })
       return
     }
     if (!canPullRefresh) return
@@ -211,6 +201,7 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
           onCleanup={handleCleanup}
         />
         <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+          <Inbox className="size-8 mb-2 opacity-40" />
           <p className="text-sm">
             {view === 'saved' 
               ? '暂无收藏文章' 
@@ -336,10 +327,10 @@ function ArticleListHeader({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-8"
+                      className="size-10 lg:size-8"
                       onClick={onMarkAllRead}
                     >
-                      <CheckCheck className="size-4" />
+                      <CheckCheck className="size-5 lg:size-4" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -355,9 +346,10 @@ function ArticleListHeader({
                     pressed={hideRead}
                     onPressedChange={onToggleHideRead}
                     size="sm"
+                    className="size-10 lg:size-8"
                     aria-label={hideRead ? '显示已读' : '隐藏已读'}
                   >
-                    {hideRead ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    {hideRead ? <EyeOff className="size-5 lg:size-4" /> : <Eye className="size-5 lg:size-4" />}
                   </Toggle>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -371,10 +363,10 @@ function ArticleListHeader({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="size-8"
+                    className="size-10 lg:size-8"
                     onClick={onCleanup}
                   >
-                    <Trash2 className="size-4" />
+                    <Trash2 className="size-5 lg:size-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -428,7 +420,7 @@ function ArticleItem({ article, isSelected, onSelect, onToggleSaved }: ArticleIt
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="size-8 shrink-0 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
           onClick={onToggleSaved}
         >
           {article.isSaved ? (
