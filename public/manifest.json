@@ -1,7 +1,7 @@
 {
-  "name": "One RSS Reader",
-  "short_name": "One RSS Reader",
-  "description": "一个支持离线阅读、高亮批注的 RSS 阅读器",
+  "name": "One Reader",
+  "short_name": "One Reader",
+  "description": "一个支持离线阅读、高亮批注的阅读器",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
