@@ -14,6 +14,7 @@ import {
   cleanupOldReadArticles,
   updateArticleContent,
 } from '@/lib/db'
+import { useSyncContext } from '@/components/sync-provider'
 import type { Article } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
@@ -61,6 +62,7 @@ export function findReadMoreUrl(content: string, articleLink: string): string | 
 
 export function useArticles(feedId?: string, hideRead: boolean = false) {
   const { mutate: globalMutate } = useSWRConfig()
+  const { markDirty } = useSyncContext()
   const key = feedId 
     ? `articles-${feedId}${hideRead ? '-unread' : ''}` 
     : `articles-all${hideRead ? '-unread' : ''}`
@@ -85,11 +87,13 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
       { revalidate: false }
     )
     await globalMutate('unread-counts')
+    markDirty()
   }
 
   const toggleSaved = async (articleId: string) => {
     const isSaved = await toggleArticleSaved(articleId)
     await mutate()
+    markDirty()
     return isSaved
   }
 
@@ -150,6 +154,7 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
 }
 
 export function useSavedArticles() {
+  const { markDirty } = useSyncContext()
   const { data: articles, error, isLoading, mutate } = useSWR<Article[]>(
     'articles-saved',
     () => getSavedArticles(),
@@ -159,6 +164,7 @@ export function useSavedArticles() {
   const toggleSaved = async (articleId: string) => {
     const isSaved = await toggleArticleSaved(articleId)
     await mutate()
+    markDirty()
     return isSaved
   }
 

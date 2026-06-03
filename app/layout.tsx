@@ -22,7 +22,7 @@ const notoSerifSC = Noto_Serif_SC({
 
 export const metadata: Metadata = {
   title: 'One Reader - 一个阅读器',
-  description: '一个支持离线阅读、高亮批注、Markdown 导出的阅读器',
+  description: '一个支持离线阅读、高亮批注、Markdown 导出的 RSS 阅读器',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

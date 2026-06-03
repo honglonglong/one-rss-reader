@@ -27,6 +27,10 @@ interface RSSReaderDB extends DBSchema {
 const DB_NAME = 'rss-reader-db'
 const DB_VERSION = 4
 
+// Retention / lookback windows — shared with hooks/use-feeds.ts
+export const ARTICLE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+export const CLOUD_SYNC_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000
+
 let dbInstance: IDBPDatabase<RSSReaderDB> | null = null
 
 export async function getDB(): Promise<IDBPDatabase<RSSReaderDB>> {
@@ -183,7 +187,24 @@ export async function addArticle(article: Article): Promise<void> {
 export async function addArticles(articles: Article[]): Promise<void> {
   const db = await getDB()
   const tx = db.transaction('articles', 'readwrite')
-  await Promise.all(articles.map((a) => tx.store.put(a)))
+  await Promise.all(articles.map(async (a) => {
+    const existing = await tx.store.get(a.id)
+    if (existing) {
+      // OR-merge read/saved state so a feed refresh can never downgrade a
+      // read/saved article that was written by a concurrent cloud sync.
+      const merged: Article = {
+        ...a,
+        isRead: existing.isRead || a.isRead,
+        readAt: existing.readAt ?? a.readAt,
+        isSaved: existing.isSaved || a.isSaved,
+        savedAt: (existing.savedAt && a.savedAt)
+          ? Math.max(existing.savedAt, a.savedAt)
+          : existing.savedAt ?? a.savedAt,
+      }
+      return tx.store.put(merged)
+    }
+    return tx.store.put(a)
+  }))
   await tx.done
 }
 
@@ -254,7 +275,7 @@ export async function markAllArticlesAsRead(feedId?: string): Promise<number> {
 // 清理30天前已读的文章（保留收藏的）
 export async function cleanupOldReadArticles(): Promise<number> {
   const db = await getDB()
-  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
+  const thirtyDaysAgo = Date.now() - ARTICLE_RETENTION_MS
   const articles = await db.getAll('articles')
   const toDelete = articles.filter(
     (a) => a.isRead && a.readAt && a.readAt < thirtyDaysAgo && !a.isSaved
@@ -474,7 +495,7 @@ export type { SyncSnapshot, ImportStats, CloudSyncSnapshot, ArticleState } from 
  * Should be called after a successful cloud upload to ensure tombstones have
  * already been propagated before they are purged locally.
  */
-export async function purgeStaleTombstones(olderThanMs = 30 * 24 * 60 * 60 * 1000): Promise<void> {
+export async function purgeStaleTombstones(olderThanMs = ARTICLE_RETENTION_MS): Promise<void> {
   const db = await getDB()
   const cutoff = Date.now() - olderThanMs
 
@@ -640,7 +661,7 @@ export async function exportCloudData(): Promise<CloudSyncSnapshot> {
   ])
   // Only sync article states from the last 90 days (or saved articles) to keep
   // the cloud snapshot small regardless of how long the user has been using the app.
-  const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000
+  const ninetyDaysAgo = Date.now() - CLOUD_SYNC_LOOKBACK_MS
   const articleStates: ArticleState[] = articles
     .filter((a) => a.isSaved || a.pubDate > ninetyDaysAgo)
     .map((a) => ({

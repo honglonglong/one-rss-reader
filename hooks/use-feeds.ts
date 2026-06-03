@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR, { useSWRConfig } from 'swr'
-import { getAllFeeds, addFeed, deleteFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed, updateFeed, updateFeedLastRefreshed } from '@/lib/db'
+import { getAllFeeds, addFeed, deleteFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed, updateFeed, updateFeedLastRefreshed, CLOUD_SYNC_LOOKBACK_MS } from '@/lib/db'
 import { parseFeed, createFeedFromParsed } from '@/lib/rss-parser'
 import type { Feed } from '@/lib/types'
 
@@ -146,7 +146,7 @@ export function useFeeds() {
         const savedArticles = await getArticlesByFeed(feed.id)
         const savedLinks = new Set(savedArticles.map((a) => a.link))
         // 只保留 90 天内的文章，与云同步截断保持一致
-        const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000
+        const ninetyDaysAgo = Date.now() - CLOUD_SYNC_LOOKBACK_MS
         // 恢复之前已读状态和手动补全内容
         const articlesToAdd = updatedArticles
           .filter((a) => !savedLinks.has(a.link) && a.pubDate > ninetyDaysAgo)
