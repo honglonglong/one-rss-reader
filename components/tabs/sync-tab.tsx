@@ -5,7 +5,7 @@ import { useSyncContext } from '@/components/sync-provider'
 import { useFeeds } from '@/hooks/use-feeds'
 
 export default function SyncTab() {
-  const { encryptedConfig, isSyncing, lastSyncAt, needsPassphrase, triggerSync, saveConfig, clearConfig } = useSyncContext()
+  const { encryptedConfig, isSyncing, lastSyncAt, lastPulledAt, needsPassphrase, triggerSync, saveConfig, clearConfig } = useSyncContext()
   const { refresh } = useFeeds()
 
   return (
@@ -13,6 +13,7 @@ export default function SyncTab() {
       asPanel
       encryptedConfig={encryptedConfig}
       lastSyncAt={lastSyncAt}
+      lastPulledAt={lastPulledAt}
       isSyncing={isSyncing}
       needsPassphrase={needsPassphrase}
       onSaveConfig={saveConfig}

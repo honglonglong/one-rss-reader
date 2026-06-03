@@ -24,6 +24,8 @@ export interface UseSyncReturn {
   isSyncing: boolean
   status: SyncStatus
   lastSyncAt: number | undefined
+  /** Timestamp of the last successful pull (in-memory only, not persisted) */
+  lastPulledAt: number | undefined
   /** True when there is a stored config but no session key cached */
   needsPassphrase: boolean
   /** Trigger a full sync. Pass passphrase only when needsPassphrase is true. */
@@ -46,6 +48,7 @@ export function useSync(): UseSyncReturn {
   const [isSyncing, setIsSyncing] = useState(false)
   const [status, setStatus] = useState<SyncStatus>('idle')
   const [lastSyncAt, setLastSyncAt] = useState<number | undefined>()
+  const [lastPulledAt, setLastPulledAt] = useState<number | undefined>()
   const [needsPassphrase, setNeedsPassphrase] = useState(false)
 
   // Refs for stable access inside timers / event listeners without stale closures.
@@ -66,6 +69,7 @@ export function useSync(): UseSyncReturn {
       await importCloudData(remote)
       // Invalidate all SWR caches so UI reflects merged data without a page reload
       await globalMutate((key) => typeof key === 'string')
+      setLastPulledAt(Date.now())
     }
   }, [globalMutate])
 
@@ -268,5 +272,5 @@ export function useSync(): UseSyncReturn {
     setStatus('idle')
   }, [])
 
-  return { encryptedConfig, isSyncing, status, lastSyncAt, needsPassphrase, triggerSync, saveConfig, clearConfig, markDirty }
+  return { encryptedConfig, isSyncing, status, lastSyncAt, lastPulledAt, needsPassphrase, triggerSync, saveConfig, clearConfig, markDirty }
 }

@@ -19,6 +19,7 @@ import {
   AlertCircle,
   Plus,
   Settings as SettingsIcon,
+  CloudSync,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Collapsible,
   CollapsibleContent,
@@ -64,6 +66,7 @@ import { useServiceWorker } from '@/hooks/use-offline'
 import { useListFontSize } from '@/hooks/use-list-font-size'
 import { AddFeedDialog } from './add-feed-dialog'
 import SettingsPanel from './settings-panel'
+import { useSyncContext } from '@/components/sync-provider'
 import { getAllGroups } from '@/lib/db'
 import { toast } from 'sonner'
 import type { Feed, FeedGroup } from '@/lib/types'
@@ -98,13 +101,37 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   const unreadCounts = useUnreadCounts()
   const { update } = useServiceWorker()
   const { listFontSize } = useListFontSize()
+  const { encryptedConfig, isSyncing, lastSyncAt, lastPulledAt, needsPassphrase, triggerSync } = useSyncContext()
+
+  const handleSyncClick = async () => {
+    if (needsPassphrase) {
+      toast.warning('请先在设置中输入同步密码')
+      return
+    }
+    try {
+      await triggerSync()
+      toast.success(`同步完成 · ${new Date().toLocaleString()}`)
+    } catch (e) {
+      const err = e as Error | null
+      toast.error(err?.message ?? '同步失败')
+    }
+  }
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
   const [refreshingFeedIds, setRefreshingFeedIds] = useState<Set<string>>(new Set())
   const [feedErrors, setFeedErrors] = useState<Map<string, string>>(new Map())
   const isRefreshing = refreshingFeedIds.size > 0
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['__ungrouped__']))
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set(['__ungrouped__'])
+    try {
+      const saved = localStorage.getItem('expandedFeedGroups')
+      if (saved) return new Set(JSON.parse(saved) as string[])
+    } catch {
+      // ignore
+    }
+    return new Set(['__ungrouped__'])
+  })
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [showUpdateDialog, setShowUpdateDialog] = useState(false)
   const [updateChangelog, setUpdateChangelog] = useState<ChangelogEntry[]>([])
@@ -265,6 +292,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
       } else {
         next.add(groupName)
       }
+      localStorage.setItem('expandedFeedGroups', JSON.stringify([...next]))
       return next
     })
   }
@@ -295,6 +323,28 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
               </Button>
             }
           />
+          {encryptedConfig !== null && (() => {
+            const displaySyncAt = Math.max(lastSyncAt ?? 0, lastPulledAt ?? 0) || undefined
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-10 lg:size-8"
+                    disabled={isSyncing}
+                    onClick={handleSyncClick}
+                  >
+                    {isSyncing ? <Loader2 className="size-5 animate-spin" /> 
+                    : <CloudSync className="size-5 lg:size-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {displaySyncAt ? `上次同步：${new Date(displaySyncAt).toLocaleString()}` : '尚未同步'}
+                </TooltipContent>
+              </Tooltip>
+            )
+          })()}
           <Button
             variant="ghost"
             size="icon"

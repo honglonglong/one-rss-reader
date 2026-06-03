@@ -31,6 +31,7 @@ interface SyncDialogProps {
   /** Injected from useSync in page.tsx */
   encryptedConfig?: EncryptedSyncConfig | null
   lastSyncAt?: number
+  lastPulledAt?: number
   isSyncing?: boolean
   needsPassphrase?: boolean
   onSaveConfig?: (cfg: EncryptedSyncConfig) => Promise<void>
@@ -97,6 +98,7 @@ export function SyncDialog({
   onImportDone,
   encryptedConfig,
   lastSyncAt,
+  lastPulledAt,
   isSyncing = false,
   needsPassphrase = false,
   onSaveConfig,
@@ -286,9 +288,10 @@ export function SyncDialog({
                       {sessionActive ? '已解锁' : '🔒 已锁定'}
                     </span>
                   </div>
-                  {lastSyncAt && (
-                    <p className="text-muted-foreground">上次同步：{new Date(lastSyncAt).toLocaleString()}</p>
-                  )}
+                  {(() => {
+                    const t = Math.max(lastSyncAt ?? 0, lastPulledAt ?? 0) || undefined
+                    return t ? <p className="text-muted-foreground">上次同步：{new Date(t).toLocaleString()}</p> : null
+                  })()}
                 </div>
 
                 {(encryptedConfig?.isEncrypted === true || (!!encryptedConfig?.salt && !!encryptedConfig?.iv)) && !hasSessionKey() ? (
