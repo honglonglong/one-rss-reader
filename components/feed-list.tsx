@@ -101,7 +101,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   const unreadCounts = useUnreadCounts()
   const { update } = useServiceWorker()
   const { listFontSize } = useListFontSize()
-  const { encryptedConfig, isSyncing, lastSyncAt, lastPulledAt, needsPassphrase, triggerSync } = useSyncContext()
+  const { encryptedConfig, isSyncing, lastSyncAt, lastPulledAt, needsPassphrase, triggerSync, feedsToRefreshAfterSync, clearFeedsToRefreshAfterSync } = useSyncContext()
 
   const handleSyncClick = async () => {
     if (needsPassphrase) {
@@ -122,6 +122,31 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   const [refreshingFeedIds, setRefreshingFeedIds] = useState<Set<string>>(new Set())
   const [feedErrors, setFeedErrors] = useState<Map<string, string>>(new Map())
   const isRefreshing = refreshingFeedIds.size > 0
+  const [isRefreshingAfterSync, setIsRefreshingAfterSync] = useState(false)
+  const isRefreshingAfterSyncRef = useRef(false)
+
+  // When cloud sync brings in new article stubs, auto-refresh those feeds to fill content
+  useEffect(() => {
+    if (!feedsToRefreshAfterSync || feedsToRefreshAfterSync.length === 0) return
+    // Guard against concurrent runs (React StrictMode double-invoke + tab-switch pull overlap)
+    if (isRefreshingAfterSyncRef.current) {
+      clearFeedsToRefreshAfterSync()
+      return
+    }
+    const ids = feedsToRefreshAfterSync
+    clearFeedsToRefreshAfterSync()
+    isRefreshingAfterSyncRef.current = true
+    setIsRefreshingAfterSync(true)
+    ;(async () => {
+      for (const id of ids) {
+        await refresh(id, { force: true }).catch(() => {})
+      }
+    })().finally(() => {
+      isRefreshingAfterSyncRef.current = false
+      setIsRefreshingAfterSync(false)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedsToRefreshAfterSync])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set(['__ungrouped__'])
     try {
@@ -325,6 +350,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
           />
           {encryptedConfig !== null && (() => {
             const displaySyncAt = Math.max(lastSyncAt ?? 0, lastPulledAt ?? 0) || undefined
+            const busySyncing = isSyncing || isRefreshingAfterSync
             return (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -332,15 +358,17 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
                     variant="ghost"
                     size="icon"
                     className="size-10 lg:size-8"
-                    disabled={isSyncing}
+                    disabled={busySyncing}
                     onClick={handleSyncClick}
                   >
-                    {isSyncing ? <Loader2 className="size-5 animate-spin" /> 
+                    {busySyncing ? <Loader2 className="size-5 animate-spin" /> 
                     : <CloudSync className="size-5 lg:size-4" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {displaySyncAt ? `上次同步：${new Date(displaySyncAt).toLocaleString()}` : '尚未同步'}
+                  {isRefreshingAfterSync
+                    ? '正在拉取文章内容...'
+                    : displaySyncAt ? `上次同步：${new Date(displaySyncAt).toLocaleString()}` : '尚未同步'}
                 </TooltipContent>
               </Tooltip>
             )

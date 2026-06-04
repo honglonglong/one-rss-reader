@@ -29,6 +29,13 @@ export interface UseSyncReturn {
   lastPulledAt: number | undefined
   /** True when there is a stored config but no session key cached */
   needsPassphrase: boolean
+  /**
+   * Feed IDs that had new stub articles created during the last pull.
+   * Consume these to trigger a background RSS refresh so content is filled in.
+   * Call clearFeedsToRefreshAfterSync() once consumed.
+   */
+  feedsToRefreshAfterSync: string[] | null
+  clearFeedsToRefreshAfterSync: () => void
   /** Trigger a full sync. Pass passphrase only when needsPassphrase is true. */
   triggerSync: (passphrase?: string) => Promise<void>
   /** Save new encrypted config (after user configures a provider). */
@@ -51,6 +58,11 @@ export function useSync(): UseSyncReturn {
   const [lastSyncAt, setLastSyncAt] = useState<number | undefined>()
   const [lastPulledAt, setLastPulledAt] = useState<number | undefined>()
   const [needsPassphrase, setNeedsPassphrase] = useState(false)
+  const [feedsToRefreshAfterSync, setFeedsToRefreshAfterSync] = useState<string[] | null>(null)
+
+  const clearFeedsToRefreshAfterSync = useCallback(() => {
+    setFeedsToRefreshAfterSync(null)
+  }, [])
 
   // Refs for stable access inside timers / event listeners without stale closures.
   // Assigned directly on every render so closures always read the latest value.
@@ -67,10 +79,13 @@ export function useSync(): UseSyncReturn {
   const doPull = useCallback(async (decrypted: SyncConfig) => {
     const remote = await downloadFromCloud(decrypted)
     if (remote) {
-      await importCloudData(remote)
+      const stats = await importCloudData(remote)
       // Invalidate all SWR caches so UI reflects merged data without a page reload
       await globalMutate((key) => typeof key === 'string')
       setLastPulledAt(Date.now())
+      if (stats.newFeedIds && stats.newFeedIds.length > 0) {
+        setFeedsToRefreshAfterSync(stats.newFeedIds)
+      }
     }
   }, [globalMutate])
 
@@ -280,5 +295,5 @@ export function useSync(): UseSyncReturn {
     setStatus('idle')
   }, [])
 
-  return { encryptedConfig, isSyncing, status, lastSyncAt, lastPulledAt, needsPassphrase, triggerSync, saveConfig, clearConfig, markDirty }
+  return { encryptedConfig, isSyncing, status, lastSyncAt, lastPulledAt, needsPassphrase, feedsToRefreshAfterSync, clearFeedsToRefreshAfterSync, triggerSync, saveConfig, clearConfig, markDirty }
 }

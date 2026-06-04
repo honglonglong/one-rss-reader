@@ -190,4 +190,6 @@ export interface ImportStats {
   articlesUpdated: number
   highlightsAdded: number
   highlightsUpdated: number
+  /** Feed IDs that had new stub articles created (content='') during cloud import — these feeds should be refreshed to fill in content. */
+  newFeedIds?: string[]
 }

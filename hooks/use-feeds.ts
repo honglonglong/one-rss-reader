@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR, { useSWRConfig } from 'swr'
-import { getAllFeeds, addFeed, deleteFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed, updateFeed, updateFeedLastRefreshed, CLOUD_SYNC_LOOKBACK_MS } from '@/lib/db'
+import { getAllFeeds, addFeed, deleteFeed, getFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed, updateFeed, updateFeedLastRefreshed, CLOUD_SYNC_LOOKBACK_MS } from '@/lib/db'
 import { parseFeed, createFeedFromParsed } from '@/lib/rss-parser'
 import type { Feed } from '@/lib/types'
 
@@ -93,10 +93,20 @@ export function useFeeds() {
     await mutate()
   }
 
-  const refresh = async (feedId?: string): Promise<boolean> => {
-    const feedsToRefresh = feedId 
-      ? feeds?.filter(f => f.id === feedId) || []
-      : feeds || []
+  const refresh = async (feedId?: string, options?: { force?: boolean }): Promise<boolean> => {
+    let feedsToRefresh: Feed[]
+    if (feedId) {
+      // Prefer SWR cache; fall back to IndexedDB when cache is stale (e.g. right after a cloud sync)
+      const fromCache = feeds?.filter(f => f.id === feedId) || []
+      if (fromCache.length > 0) {
+        feedsToRefresh = fromCache
+      } else {
+        const fromDb = await getFeed(feedId)
+        feedsToRefresh = fromDb && !fromDb.deletedAt ? [fromDb] : []
+      }
+    } else {
+      feedsToRefresh = feeds || []
+    }
 
     let didRefresh = false
 
@@ -111,7 +121,8 @@ export function useFeeds() {
       // Skip if last refresh is more recent than the feed's estimated update
       // interval, unless the local latest article is already older than that
       // interval, in which case we need to refresh it immediately.
-      if (feed.lastRefreshedAt && Date.now() - feed.lastRefreshedAt < cooldown && !isLatestArticleStale) {
+      // The force option bypasses this check (e.g. after cloud sync brings new stubs).
+      if (!options?.force && feed.lastRefreshedAt && Date.now() - feed.lastRefreshedAt < cooldown && !isLatestArticleStale) {
         continue
       }
 

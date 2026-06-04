@@ -559,6 +559,7 @@ export async function importAllData(snapshot: SyncSnapshot): Promise<ImportStats
     articlesUpdated: 0,
     highlightsAdded: 0,
     highlightsUpdated: 0,
+    newFeedIds: [],
   }
 
   // ── Feeds ──────────────────────────────────────────────────────────────────
@@ -696,6 +697,7 @@ export async function exportCloudData(): Promise<CloudSyncSnapshot> {
  */
 export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<ImportStats> {
   const db = await getDB()
+  const newFeedIdSet = new Set<string>()
   const stats: ImportStats = {
     feedsAdded: 0,
     feedsUpdated: 0,
@@ -703,6 +705,7 @@ export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<Impo
     articlesUpdated: 0,
     highlightsAdded: 0,
     highlightsUpdated: 0,
+    newFeedIds: [],
   }
 
   // ── Feeds (same logic as importAllData) ────────────────────────────────────
@@ -752,6 +755,7 @@ export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<Impo
       const resolvedFeedId = remoteFeedIdToLocal.get(remote.feedId) ?? remote.feedId
       await articleTx.store.put({ ...remote, feedId: resolvedFeedId, content: '' })
       stats.articlesAdded++
+      newFeedIdSet.add(resolvedFeedId)
       continue
     }
     const remoteSavedAt = remote.savedAt ?? 0
@@ -765,6 +769,10 @@ export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<Impo
     }
     await articleTx.store.put(merged)
     stats.articlesUpdated++
+    // If local article has no content yet (stub from a previous sync), schedule the feed for refresh
+    if (!merged.content && !merged.isContentManuallyFilled && !merged.isRead) {
+      newFeedIdSet.add(merged.feedId)
+    }
   }
   await articleTx.done
 
@@ -791,5 +799,6 @@ export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<Impo
   }
   await hlTx.done
 
+  stats.newFeedIds = Array.from(newFeedIdSet)
   return stats
 }
