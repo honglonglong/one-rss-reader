@@ -10,6 +10,7 @@ import {
   hasSessionKey,
 } from '@/lib/sync-crypto'
 import { downloadFromCloud, uploadToCloud } from '@/lib/cloud-sync'
+import { toast } from 'sonner'
 import type { EncryptedSyncConfig, SyncConfig } from '@/lib/types'
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error'
@@ -166,7 +167,11 @@ export function useSync(): UseSyncReturn {
               return
             }
             await doPull(decrypted)
-            if (!cancelled) { setNeedsPassphrase(false); setStatus('success') }
+            if (!cancelled) {
+              setNeedsPassphrase(false)
+              setStatus('success')
+              toast.success(`已同步 · ${new Date().toLocaleString()}`)
+            }
           } catch (err) {
             console.error('[useSync] startup pull failed', err)
             if (!cancelled) setStatus('error')
@@ -202,7 +207,9 @@ export function useSync(): UseSyncReturn {
     autoSyncRef.current = () => {
       if (isSyncing) return
       if (document.visibilityState !== 'visible') return
-      triggerSync().catch((e) => { console.log(e) })
+      triggerSync()
+        .then(() => { toast.success(`已同步 · ${new Date().toLocaleString()}`) })
+        .catch((e) => { console.log(e) })
     }
   })
 
@@ -245,6 +252,7 @@ export function useSync(): UseSyncReturn {
       try {
         await pushIfPossible()
         setStatus('success')
+        toast.success(`已同步 · ${new Date().toLocaleString()}`)
       } catch {
         setStatus('error')
       } finally {

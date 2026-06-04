@@ -107,6 +107,7 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
     const count = await markAllArticlesAsRead(feedId)
     await mutate()
     await globalMutate('unread-counts')
+    markDirty()
     return count
   }
 
