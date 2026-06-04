@@ -180,7 +180,7 @@ export function useFeeds() {
     }
 
     await mutate()
-    await globalMutate((key: unknown) => typeof key === 'string' && key.startsWith('articles'))
+    await globalMutate((key: unknown) => typeof key === 'string' && key.startsWith('article'))
     await globalMutate('unread-counts')
     return didRefresh
   }
