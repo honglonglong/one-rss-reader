@@ -78,19 +78,19 @@ export function sanitizeHtml(html: string): string {
 }
 
 // Extract plain text from HTML
+// NOTE: Do NOT use innerHTML on a detached element — browsers still fire
+// network requests for <img> and other sub-resources even when the element
+// is never attached to the document.  A regex strip is sufficient here
+// because we only need plain text for previews / reading-time estimates.
 export function htmlToText(html: string): string {
-  const div = typeof document !== 'undefined' 
-    ? document.createElement('div') 
-    : null
-  
-  if (div) {
-    div.innerHTML = html
-    return div.textContent || div.innerText || ''
-  }
-  
-  // Fallback for server-side
   return html
     .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
     .replace(/\s+/g, ' ')
     .trim()
 }
