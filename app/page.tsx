@@ -10,10 +10,11 @@ import { HighlightsPanel } from '@/components/highlights-panel'
 import { OfflineIndicator } from '@/components/offline-indicator'
 import { useIsMobile, useIsTablet } from '@/hooks/use-mobile'
 import { useAppBadge } from '@/hooks/use-app-badge'
-import { cleanupOldReadArticles } from '@/lib/db'
+import { cleanupOldReadArticles, getDB } from '@/lib/db'
 import type { Article } from '@/lib/types'
 import { SyncProvider } from '@/components/sync-provider'
 import SettingsPanel, { SettingsPanelContent } from '@/components/settings-panel'
+import { SplashScreen } from '@/components/splash-screen'
 
 const FEED_LIST_WIDTH_KEY = 'feedListWidth'
 const FEED_LIST_MIN_WIDTH = 160
@@ -26,6 +27,11 @@ export default function Home() {
   const isMobile = useIsMobile()
   const isTablet = useIsTablet()
   useAppBadge()
+
+  const [isAppReady, setIsAppReady] = useState(false)
+  useEffect(() => {
+    getDB().then(() => setIsAppReady(true))
+  }, [])
 
   // Auto-cleanup old read articles once per day
   useEffect(() => {
@@ -145,6 +151,7 @@ export default function Home() {
       { id: 'settings' as const, icon: Settings, label: '设置' },
     ]
     return (
+      <>
       <SyncProvider>
       <div className="h-dvh flex flex-col bg-background">
         {/* Main content */}
@@ -205,12 +212,15 @@ export default function Home() {
         <OfflineIndicator />
       </div>
       </SyncProvider>
+      <SplashScreen isVisible={!isAppReady} />
+      </>
     )
   }
 
   // Tablet layout — two columns, full-screen reader overlay
   if (isTablet) {
     return (
+      <>
       <SyncProvider>
       <div className="h-dvh flex bg-background overflow-hidden relative">
         {/* Left: Feed list */}
@@ -248,11 +258,14 @@ export default function Home() {
         <OfflineIndicator />
       </div>
       </SyncProvider>
+      <SplashScreen isVisible={!isAppReady} />
+      </>
     )
   }
 
   // Desktop layout - three columns with expandable reader
   return (
+    <>
     <SyncProvider>
     <div className="h-dvh flex bg-background overflow-hidden">
       {/* Sidebar - feeds */}
@@ -311,5 +324,7 @@ export default function Home() {
       <OfflineIndicator />
     </div>
     </SyncProvider>
+    <SplashScreen isVisible={!isAppReady} />
+    </>
   )
 }

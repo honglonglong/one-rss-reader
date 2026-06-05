@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono, Noto_Serif_SC } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
+import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
 const geistSans = Geist({
@@ -52,11 +53,14 @@ export default function RootLayout({
     <html
       lang="zh-CN"
       className={`${geistSans.variable} ${geistMono.variable} ${notoSerifSC.variable} bg-background`}
+      suppressHydrationWarning
     >
       <body className="font-sans antialiased">
-        {children}
-        <Toaster position="top-center" richColors />
-        <Analytics />
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          {children}
+          <Toaster position="top-center" richColors />
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   )

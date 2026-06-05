@@ -59,7 +59,7 @@ export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
 export interface ReadingSettings {
   fontSize: number
   lineHeight: number
-  theme: 'light' | 'dark' | 'sepia'
+  theme: 'system' | 'light' | 'dark' | 'sepia'
   fontFamily: 'sans' | 'serif'
   maxWidth: number
   hideRead: boolean
@@ -68,7 +68,7 @@ export interface ReadingSettings {
 export const DEFAULT_READING_SETTINGS: ReadingSettings = {
   fontSize: 18,
   lineHeight: 1.8,
-  theme: 'light',
+  theme: 'system',
   fontFamily: 'sans',
   maxWidth: 680,
   hideRead: false,

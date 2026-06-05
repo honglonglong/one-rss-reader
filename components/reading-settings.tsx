@@ -1,6 +1,6 @@
 'use client'
 
-import { Sun, Moon, Type, Minus, Plus } from 'lucide-react'
+import { Sun, Moon, Monitor, Type, Minus, Plus } from 'lucide-react'
 import {
   Popover,
   PopoverContent,
@@ -30,10 +30,14 @@ export function ReadingSettings() {
               type="single"
               value={settings.theme}
               onValueChange={(value) => {
-                if (value) updateSettings({ theme: value as 'light' | 'dark' | 'sepia' })
+                if (value) updateSettings({ theme: value as 'system' | 'light' | 'dark' | 'sepia' })
               }}
               className="justify-start"
             >
+              <ToggleGroupItem value="system" className="gap-1">
+                <Monitor className="size-3" />
+                跟随
+              </ToggleGroupItem>
               <ToggleGroupItem value="light" className="gap-1">
                 <Sun className="size-3" />
                 亮色

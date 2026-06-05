@@ -123,6 +123,7 @@ export function useSync(): UseSyncReturn {
     if (!blob) return
     const decrypted = await decryptWithSessionKey(blob).catch(() => null)
     if (!decrypted) return
+    isSyncingRef.current = true  // guard concurrent calls before React re-render
     setIsSyncing(true)
     setStatus('syncing')
     try {
@@ -132,6 +133,7 @@ export function useSync(): UseSyncReturn {
       setStatus('error')
       throw err
     } finally {
+      isSyncingRef.current = false
       setIsSyncing(false)
     }
   }, [doPull])
@@ -146,6 +148,7 @@ export function useSync(): UseSyncReturn {
 
   // ─── doSync: full pull + push (used by manual trigger and periodic timer) ──
   const doSync = useCallback(async (encryptedCfg: EncryptedSyncConfig, config?: SyncConfig) => {
+    isSyncingRef.current = true  // guard concurrent calls before React re-render
     setIsSyncing(true)
     setStatus('syncing')
     try {
@@ -166,6 +169,7 @@ export function useSync(): UseSyncReturn {
       setStatus('error')
       throw err
     } finally {
+      isSyncingRef.current = false
       setIsSyncing(false)
     }
   }, [doPull, doPush])
@@ -183,6 +187,7 @@ export function useSync(): UseSyncReturn {
       if (!needsKey) {
         const runStartup = async () => {
           if (cancelled) return
+          isSyncingRef.current = true  // guard concurrent calls before React re-render
           setIsSyncing(true)
           setStatus('syncing')
           try {
@@ -201,6 +206,7 @@ export function useSync(): UseSyncReturn {
             console.error('[useSync] startup pull failed', err)
             if (!cancelled) setStatus('error')
           } finally {
+            isSyncingRef.current = false
             if (!cancelled) setIsSyncing(false)
           }
         }
@@ -248,7 +254,9 @@ export function useSync(): UseSyncReturn {
     const onVisibilityChange = () => {
       if (isSyncingRef.current) return
       if (document.visibilityState === 'visible') {
-        pullIfPossible().catch(() => {})
+        pullIfPossible()
+          .then(() => { toast.success(`已同步 · ${new Date().toLocaleString()}`) })
+          .catch(() => {})
       } else {
         if (!isDirtyRef.current) return
         if (pushTimerRef.current) { clearTimeout(pushTimerRef.current); pushTimerRef.current = null }

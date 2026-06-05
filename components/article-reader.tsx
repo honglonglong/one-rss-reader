@@ -43,6 +43,7 @@ const COLOR_CLASSES: Record<HighlightColor, string> = {
 }
 
 const THEME_CLASSES = {
+  system: 'bg-background text-foreground',
   light: 'bg-white text-zinc-900',
   dark: 'bg-zinc-900 text-zinc-100',
   sepia: 'bg-amber-50 text-amber-950',
