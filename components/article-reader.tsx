@@ -1,4 +1,4 @@
-'use client'
+git 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { formatDistanceToNow, format } from 'date-fns'
@@ -198,6 +198,15 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     }
   }
 
+  const handleContentClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const link = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null
+    if (!link) return
+    const href = link.getAttribute('href')
+    if (!href || href === '#') return
+    e.preventDefault()
+    window.open(href, '_blank', 'noopener,noreferrer')
+  }, [])
+
   if (!article) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-muted-foreground bg-muted/30">
@@ -365,6 +374,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
               }}
               dangerouslySetInnerHTML={{ __html: sanitizedContent }}
               onMouseUp={handleMouseUp}
+              onClick={handleContentClick}
             />
           </article>
         </div>
