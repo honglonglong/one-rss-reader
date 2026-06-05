@@ -40,7 +40,7 @@ export default function Home() {
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null)
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null)
   const [view, setView] = useState<View>('all')
-  const [mobileView, setMobileView] = useState<'feeds' | 'articles' | 'reader' | 'settings'>('articles')
+  const [mobileView, setMobileView] = useState<'feeds' | 'articles' | 'reader' | 'settings'>('feeds')
   const [isReaderExpanded, setIsReaderExpanded] = useState(false)
   const [feedListWidth, setFeedListWidth] = useState<number>(FEED_LIST_DEFAULT_WIDTH)
   const isResizingRef = useRef(false)

@@ -755,7 +755,9 @@ export async function importCloudData(snapshot: CloudSyncSnapshot): Promise<Impo
       const resolvedFeedId = remoteFeedIdToLocal.get(remote.feedId) ?? remote.feedId
       await articleTx.store.put({ ...remote, feedId: resolvedFeedId, content: '' })
       stats.articlesAdded++
-      newFeedIdSet.add(resolvedFeedId)
+      if (!remote.isRead) {
+        newFeedIdSet.add(resolvedFeedId)
+      }
       continue
     }
     const remoteSavedAt = remote.savedAt ?? 0

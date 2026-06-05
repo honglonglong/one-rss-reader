@@ -139,7 +139,9 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
     setIsRefreshingAfterSync(true)
     ;(async () => {
       for (const id of ids) {
+        setRefreshingFeedIds((prev) => new Set([...prev, id]))
         await refresh(id, { force: true }).catch(() => {})
+        setRefreshingFeedIds((prev) => { const n = new Set(prev); n.delete(id); return n })
       }
     })().finally(() => {
       isRefreshingAfterSyncRef.current = false
@@ -217,6 +219,16 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
   }, [feeds])
 
   const handleRefresh = async () => {
+    // Wait for any in-progress post-sync refresh to complete first
+    if (isRefreshingAfterSyncRef.current) {
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (!isRefreshingAfterSyncRef.current) resolve()
+          else setTimeout(check, 200)
+        }
+        check()
+      })
+    }
     const feedsSnapshot = [...feeds]
     if (feedsSnapshot.length === 0) return
     const queue = [...feedsSnapshot]
