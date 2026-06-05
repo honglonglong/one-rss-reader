@@ -123,7 +123,17 @@ export function useSync(): UseSyncReturn {
     if (!blob) return
     const decrypted = await decryptWithSessionKey(blob).catch(() => null)
     if (!decrypted) return
-    await doPull(decrypted)
+    setIsSyncing(true)
+    setStatus('syncing')
+    try {
+      await doPull(decrypted)
+      setStatus('success')
+    } catch (err) {
+      setStatus('error')
+      throw err
+    } finally {
+      setIsSyncing(false)
+    }
   }, [doPull])
 
   const pushIfPossible = useCallback(async () => {
