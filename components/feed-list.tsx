@@ -68,6 +68,7 @@ import { AddFeedDialog } from './add-feed-dialog'
 import SettingsPanel from './settings-panel'
 import { useSyncContext } from '@/components/sync-provider'
 import { getAllGroups } from '@/lib/db'
+import { normalizeErrorMessage, toastError } from '@/lib/error-utils'
 import { toast } from 'sonner'
 import type { Feed, FeedGroup } from '@/lib/types'
 
@@ -77,6 +78,9 @@ interface FeedListProps {
   onSelectSaved: () => void
   onSelectHighlights: () => void
   view: 'all' | 'feed' | 'saved' | 'highlights'
+  feedErrors: Map<string, string>
+  onSetFeedError: (feedId: string, message: string) => void
+  onClearFeedError: (feedId: string) => void
 }
 
 interface ChangelogEntry {
@@ -84,6 +88,8 @@ interface ChangelogEntry {
   date: string
   changes: string[]
 }
+
+type FeedRefreshResult = 'refreshed' | 'skipped' | 'failed'
 
 /** Returns true if version string `a` is strictly greater than `b` (semver). */
 function semverGt(a: string, b: string): boolean {
@@ -96,7 +102,16 @@ function semverGt(a: string, b: string): boolean {
   return false
 }
 
-export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelectHighlights, view }: FeedListProps) {
+export function FeedList({
+  selectedFeedId,
+  onSelectFeed,
+  onSelectSaved,
+  onSelectHighlights,
+  view,
+  feedErrors,
+  onSetFeedError,
+  onClearFeedError,
+}: FeedListProps) {
   const { feeds, unsubscribe, refresh, setFeedGroup, editFeed, isLoading } = useFeeds()
   const unreadCounts = useUnreadCounts()
   const { update } = useServiceWorker()
@@ -112,15 +127,13 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
       await triggerSync()
       toast.success(`同步完成 · ${new Date().toLocaleString()}`)
     } catch (e) {
-      const err = e as Error | null
-      toast.error(err?.message ?? '同步失败')
+      toastError(e, '同步失败')
     }
   }
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Feed | null>(null)
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
   const [refreshingFeedIds, setRefreshingFeedIds] = useState<Set<string>>(new Set())
-  const [feedErrors, setFeedErrors] = useState<Map<string, string>>(new Map())
   const isRefreshing = refreshingFeedIds.size > 0
   const [isRefreshingAfterSync, setIsRefreshingAfterSync] = useState(false)
   const isRefreshingAfterSyncRef = useRef(false)
@@ -218,6 +231,34 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
     return groups
   }, [feeds])
 
+  const refreshSingleFeed = async (
+    feedId: string,
+    options?: { force?: boolean; notifyOnSuccess?: boolean }
+  ): Promise<FeedRefreshResult> => {
+    setRefreshingFeedIds((prev) => new Set([...prev, feedId]))
+    try {
+      const didRefresh = await refresh(feedId, { force: options?.force })
+      if (didRefresh) {
+        onClearFeedError(feedId)
+      }
+      if (options?.notifyOnSuccess && didRefresh) {
+        toast.success('已刷新')
+      }
+      return didRefresh ? 'refreshed' : 'skipped'
+    } catch (error) {
+      const msg = normalizeErrorMessage(error, '刷新失败')
+      onSetFeedError(feedId, msg)
+      toastError(error, '刷新失败')
+      return 'failed'
+    } finally {
+      setRefreshingFeedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(feedId)
+        return next
+      })
+    }
+  }
+
   const handleRefresh = async () => {
     // Wait for any in-progress post-sync refresh to complete first
     if (isRefreshingAfterSyncRef.current) {
@@ -236,20 +277,9 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
     const worker = async () => {
       while (queue.length > 0) {
         const feed = queue.shift()!
-        setRefreshingFeedIds((prev) => new Set([...prev, feed.id]))
-        try {
-          await refresh(feed.id)
-          setFeedErrors((prev) => { const n = new Map(prev); n.delete(feed.id); return n })
-        } catch (error) {
+        const result = await refreshSingleFeed(feed.id)
+        if (result === 'failed') {
           failCount++
-          const msg = error instanceof Error ? error.message : '刷新失败'
-          setFeedErrors((prev) => new Map([...prev, [feed.id, msg]]))
-        } finally {
-          setRefreshingFeedIds((prev) => {
-            const next = new Set(prev)
-            next.delete(feed.id)
-            return next
-          })
         }
       }
     }
@@ -275,24 +305,14 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
 
   const handleSelectFeedItem = (feedId: string) => {
     onSelectFeed(feedId)
-    setRefreshingFeedIds((prev) => new Set([...prev, feedId]))
-    refresh(feedId)
-      .then((didRefresh) => {
-        setFeedErrors((prev) => { const n = new Map(prev); n.delete(feedId); return n })
-        if (didRefresh) toast.success('已刷新')
-      })
-      .catch((error) => {
-        const msg = error instanceof Error ? error.message : '刷新失败'
-        setFeedErrors((prev) => new Map([...prev, [feedId, msg]]))
-        toast.error('刷新失败')
-      })
-      .finally(() =>
-        setRefreshingFeedIds((prev) => {
-          const next = new Set(prev)
-          next.delete(feedId)
-          return next
-        })
-      )
+    if (!feedErrors.has(feedId)) return
+    if (refreshingFeedIds.has(feedId)) return
+    void refreshSingleFeed(feedId, { force: true, notifyOnSuccess: true })
+  }
+
+  const handleRetryFeed = (feedId: string) => {
+    if (refreshingFeedIds.has(feedId)) return
+    void refreshSingleFeed(feedId, { force: true, notifyOnSuccess: true })
   }
 
   const handleDelete = async () => {
@@ -450,6 +470,7 @@ export function FeedList({ selectedFeedId, onSelectFeed, onSelectSaved, onSelect
                   existingGroups={existingGroups}
                   onLoadGroups={loadGroups}
                   onEdit={setEditTarget}
+                  onRetryFeed={handleRetryFeed}
                   unreadCounts={unreadCounts}
                   refreshingFeedIds={refreshingFeedIds}
                   feedErrors={feedErrors}
@@ -541,6 +562,7 @@ interface FeedGroupItemProps {
   existingGroups: string[]
   onLoadGroups: () => void
   onEdit: (feed: Feed) => void
+  onRetryFeed: (feedId: string) => void
   unreadCounts: Record<string, number>
   refreshingFeedIds: Set<string>
   feedErrors: Map<string, string>
@@ -558,6 +580,7 @@ function FeedGroupItem({
   existingGroups,
   onLoadGroups,
   onEdit,
+  onRetryFeed,
   unreadCounts,
   refreshingFeedIds,
   feedErrors,
@@ -576,7 +599,10 @@ function FeedGroupItem({
             onDelete={() => onDelete(feed)}
             onMoveToGroup={(g) => onMoveToGroup(feed, g)}
             existingGroups={existingGroups}
-            onLoadGroups={onLoadGroups}              onEdit={() => onEdit(feed)}          unreadCount={unreadCounts[feed.id] || 0}
+            onLoadGroups={onLoadGroups}
+            onEdit={() => onEdit(feed)}
+            onRetry={() => onRetryFeed(feed.id)}
+            unreadCount={unreadCounts[feed.id] || 0}
             isRefreshing={refreshingFeedIds.has(feed.id)}
             errorMessage={feedErrors.get(feed.id)}
           />
@@ -625,6 +651,7 @@ function FeedGroupItem({
               existingGroups={existingGroups}
               onLoadGroups={onLoadGroups}
               onEdit={() => onEdit(feed)}
+              onRetry={() => onRetryFeed(feed.id)}
               unreadCount={unreadCounts[feed.id] || 0}
               isRefreshing={refreshingFeedIds.has(feed.id)}
               errorMessage={feedErrors.get(feed.id)}
@@ -645,6 +672,7 @@ interface FeedItemProps {
   existingGroups: string[]
   onLoadGroups: () => void
   onEdit: () => void
+  onRetry: () => void
   unreadCount: number
   isRefreshing?: boolean
   errorMessage?: string
@@ -659,6 +687,7 @@ function FeedItem({
   existingGroups,
   onLoadGroups,
   onEdit,
+  onRetry,
   unreadCount,
   isRefreshing,
   errorMessage,
@@ -712,6 +741,13 @@ function FeedItem({
         <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
           {errorMessage && (
             <>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={onRetry}
+              >
+                <RefreshCw className="size-4 mr-2" />
+                重试刷新
+              </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onClick={() => setShowErrorDialog(true)}

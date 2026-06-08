@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { getAllFeeds, addFeed, deleteFeed, getFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed, updateFeed, updateFeedLastRefreshed, CLOUD_SYNC_LOOKBACK_MS } from '@/lib/db'
 import { parseFeed, createFeedFromParsed } from '@/lib/rss-parser'
@@ -36,6 +37,7 @@ function estimateUpdateInterval(articles: { pubDate: number }[]): number {
 
 export function useFeeds() {
   const { mutate: globalMutate } = useSWRConfig()
+  const inFlightRefreshRef = useRef<Map<string, Promise<boolean>>>(new Map())
   const { data: feeds, error, isLoading, mutate } = useSWR<Feed[]>(
     'feeds',
     () => getAllFeeds(),
@@ -111,32 +113,43 @@ export function useFeeds() {
     let didRefresh = false
 
     for (const feed of feedsToRefresh) {
-      const cooldown = feed.estimatedUpdateIntervalMs ?? DEFAULT_INTERVAL
-      const existingArticles = await getArticlesByFeed(feed.id)
-      const latestArticle = existingArticles[0]
-      const isLatestArticleStale = latestArticle
-        ? Date.now() - latestArticle.pubDate > cooldown
-        : false
-
-      // Skip if last refresh is more recent than the feed's estimated update
-      // interval, unless the local latest article is already older than that
-      // interval, in which case we need to refresh it immediately.
-      // The force option bypasses this check (e.g. after cloud sync brings new stubs).
-      if (!options?.force && feed.lastRefreshedAt && Date.now() - feed.lastRefreshedAt < cooldown && !isLatestArticleStale) {
+      const existingInFlight = inFlightRefreshRef.current.get(feed.id)
+      if (existingInFlight) {
+        try {
+          if (await existingInFlight) didRefresh = true
+        } catch (error) {
+          if (feedId) throw error
+          console.error(`Failed to refresh feed ${feed.title}:`, error)
+        }
         continue
       }
 
-      try {
+      const refreshTask = (async (): Promise<boolean> => {
+        const cooldown = feed.estimatedUpdateIntervalMs ?? DEFAULT_INTERVAL
+        const existingArticles = await getArticlesByFeed(feed.id)
+        const latestArticle = existingArticles[0]
+        const isLatestArticleStale = latestArticle
+          ? Date.now() - latestArticle.pubDate > cooldown
+          : false
+
+        // Skip if last refresh is more recent than the feed's estimated update
+        // interval, unless the local latest article is already older than that
+        // interval, in which case we need to refresh it immediately.
+        // The force option bypasses this check (e.g. after cloud sync brings new stubs).
+        if (!options?.force && feed.lastRefreshedAt && Date.now() - feed.lastRefreshedAt < cooldown && !isLatestArticleStale) {
+          return false
+        }
+
         const parsed = await parseFeed(feed.url)
         const { articles } = createFeedFromParsed(parsed, feed.url)
-        
+
         // Update articles with correct feedId
         const updatedArticles = articles.map(a => ({
           ...a,
           feedId: feed.id,
           feedTitle: feed.title,
         }))
-        
+
         // 刷新前记录已读状态（按 link 索引），刷新后恢复，避免已读标记丢失
         const readStateByLink = new Map(
           existingArticles
@@ -172,10 +185,19 @@ export function useFeeds() {
         // Re-estimate update interval from fresh articles and persist alongside refresh timestamp
         const newInterval = estimateUpdateInterval(updatedArticles)
         await updateFeedLastRefreshed(feed.id, Date.now(), newInterval)
-        didRefresh = true
+        return true
+      })()
+
+      inFlightRefreshRef.current.set(feed.id, refreshTask)
+      try {
+        if (await refreshTask) didRefresh = true
       } catch (error) {
         console.error(`Failed to refresh feed ${feed.title}:`, error)
         if (feedId) throw error
+      } finally {
+        if (inFlightRefreshRef.current.get(feed.id) === refreshTask) {
+          inFlightRefreshRef.current.delete(feed.id)
+        }
       }
     }
 

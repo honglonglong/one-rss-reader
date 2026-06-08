@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select'
 import { useFeeds } from '@/hooks/use-feeds'
 import { getAllGroups } from '@/lib/db'
+import { toastError } from '@/lib/error-utils'
 import { toast } from 'sonner'
 
 interface AddFeedDialogProps {
@@ -59,7 +60,7 @@ export function AddFeedDialog({ trigger }: AddFeedDialogProps) {
       setShowNewGroup(false)
       setOpen(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '订阅失败')
+      toastError(error, '订阅失败')
     } finally {
       setIsLoading(false)
     }

@@ -46,6 +46,7 @@ export default function Home() {
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null)
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null)
   const [view, setView] = useState<View>('all')
+  const [feedErrors, setFeedErrors] = useState<Map<string, string>>(new Map())
   const [mobileView, setMobileView] = useState<'feeds' | 'articles' | 'reader' | 'settings'>('feeds')
   const [isReaderExpanded, setIsReaderExpanded] = useState(false)
   const [feedListWidth, setFeedListWidth] = useState<number>(FEED_LIST_DEFAULT_WIDTH)
@@ -112,6 +113,19 @@ export default function Home() {
     setMobileView('articles')
   }
 
+  const handleSetFeedError = useCallback((feedId: string, message: string) => {
+    setFeedErrors((prev) => new Map([...prev, [feedId, message]]))
+  }, [])
+
+  const handleClearFeedError = useCallback((feedId: string) => {
+    setFeedErrors((prev) => {
+      if (!prev.has(feedId)) return prev
+      const next = new Map(prev)
+      next.delete(feedId)
+      return next
+    })
+  }, [])
+
   const handleSelectSaved = () => {
     setSelectedFeedId(null)
     setView('saved')
@@ -163,6 +177,9 @@ export default function Home() {
               onSelectSaved={handleSelectSaved}
               onSelectHighlights={handleSelectHighlights}
               view={view}
+              feedErrors={feedErrors}
+              onSetFeedError={handleSetFeedError}
+              onClearFeedError={handleClearFeedError}
             />
           )}
           {mobileView === 'articles' && view === 'highlights' && (
@@ -231,6 +248,9 @@ export default function Home() {
             onSelectSaved={handleSelectSaved}
             onSelectHighlights={handleSelectHighlights}
             view={view}
+            feedErrors={feedErrors}
+            onSetFeedError={handleSetFeedError}
+            onClearFeedError={handleClearFeedError}
           />
         </div>
 
@@ -282,6 +302,9 @@ export default function Home() {
           onSelectSaved={handleSelectSaved}
           onSelectHighlights={handleSelectHighlights}
           view={view}
+          feedErrors={feedErrors}
+          onSetFeedError={handleSetFeedError}
+          onClearFeedError={handleClearFeedError}
         />
       </div>
 

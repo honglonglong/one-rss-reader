@@ -31,6 +31,7 @@ import { ReadingSettings } from './reading-settings'
 import { HighlightToolbar } from './highlight-toolbar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { toastError } from '@/lib/error-utils'
 import type { Article, HighlightColor, Highlight } from '@/lib/types'
 import { toast } from 'sonner'
 
@@ -192,7 +193,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
       await fetchFullContent(article)
       toast.success('已成功补全文章内容')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '补全文失败')
+      toastError(err, '补全文失败')
     } finally {
       setIsFetchingContent(false)
     }

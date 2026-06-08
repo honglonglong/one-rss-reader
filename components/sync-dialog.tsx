@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { downloadSnapshot, readSnapshotFile, importSnapshot, formatExportDate } from '@/lib/sync'
 import { encryptSyncConfig, decryptSyncConfig, hasSessionKey } from '@/lib/sync-crypto'
 import { testCloudConnection } from '@/lib/cloud-sync'
+import { toastError } from '@/lib/error-utils'
 import type { SyncSnapshot } from '@/lib/types'
 import type { ImportStats } from '@/lib/types'
 import type { SyncProviderType, SyncConfig, EncryptedSyncConfig } from '@/lib/types'
@@ -161,7 +162,7 @@ export function SyncDialog({
       setPendingSnapshot(snapshot)
       setImportStats(null)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '文件读取失败')
+      toastError(err, '文件读取失败')
     }
   }
 
@@ -209,7 +210,7 @@ export function SyncDialog({
       await testCloudConnection(config)
       toast.success('连接测试成功')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '连接测试失败')
+      toastError(err, '连接测试失败')
     } finally {
       setIsTesting(false)
     }
@@ -226,7 +227,7 @@ export function SyncDialog({
       setPassphrase('')
       toast.success('云同步已配置')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '保存失败')
+      toastError(err, '保存失败')
     } finally {
       setIsSaving(false)
     }
@@ -239,7 +240,7 @@ export function SyncDialog({
       setSyncPassphrase('')
       toast.success('同步成功')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '同步失败，请检查密码')
+      toastError(err, '同步失败，请检查密码')
     }
   }
 
@@ -249,7 +250,7 @@ export function SyncDialog({
       await onTriggerSync()
       toast.success('同步完成')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '同步失败')
+      toastError(err, '同步失败')
     }
   }
 
