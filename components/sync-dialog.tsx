@@ -238,7 +238,6 @@ export function SyncDialog({
     try {
       await onTriggerSync(syncPassphrase)
       setSyncPassphrase('')
-      toast.success('同步成功')
     } catch (err) {
       toastError(err, '同步失败，请检查密码')
     }
@@ -248,7 +247,6 @@ export function SyncDialog({
     if (!onTriggerSync) return
     try {
       await onTriggerSync()
-      toast.success('同步完成')
     } catch (err) {
       toastError(err, '同步失败')
     }

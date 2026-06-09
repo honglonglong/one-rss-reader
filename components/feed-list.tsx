@@ -125,7 +125,6 @@ export function FeedList({
     }
     try {
       await triggerSync()
-      toast.success(`同步完成 · ${new Date().toLocaleString()}`)
     } catch (e) {
       toastError(e, '同步失败')
     }

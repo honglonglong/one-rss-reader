@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono, Noto_Serif_SC } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
+import { CloudSyncSuccessIndicator } from '@/components/cloud-sync-success-indicator'
 import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
@@ -58,6 +59,7 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}
+          <CloudSyncSuccessIndicator />
           <Toaster position="top-center" richColors />
           <Analytics />
         </ThemeProvider>

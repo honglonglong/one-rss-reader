@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSWRConfig } from 'swr'
+import { showCloudSyncSuccessIndicator } from '@/components/cloud-sync-success-indicator'
 import { exportCloudData, importCloudData, getSyncConfig, saveSyncConfig, purgeStaleTombstones } from '@/lib/db'
 import {
   decryptWithSessionKey,
@@ -10,7 +11,6 @@ import {
   hasSessionKey,
 } from '@/lib/sync-crypto'
 import { downloadFromCloud, uploadToCloud } from '@/lib/cloud-sync'
-import { toast } from 'sonner'
 import type { EncryptedSyncConfig, SyncConfig } from '@/lib/types'
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error'
@@ -129,6 +129,7 @@ export function useSync(): UseSyncReturn {
     try {
       await doPull(decrypted)
       setStatus('success')
+      showCloudSyncSuccessIndicator()
     } catch (err) {
       setStatus('error')
       throw err
@@ -164,6 +165,7 @@ export function useSync(): UseSyncReturn {
       await doPush(encryptedCfg, decrypted)
       setNeedsPassphrase(false)
       setStatus('success')
+      showCloudSyncSuccessIndicator()
     } catch (err) {
       console.error('[useSync] sync failed', err)
       setStatus('error')
@@ -200,7 +202,7 @@ export function useSync(): UseSyncReturn {
             if (!cancelled) {
               setNeedsPassphrase(false)
               setStatus('success')
-              toast.success(`已同步 · ${new Date().toLocaleString()}`)
+              showCloudSyncSuccessIndicator()
             }
           } catch (err) {
             console.error('[useSync] startup pull failed', err)
@@ -239,7 +241,6 @@ export function useSync(): UseSyncReturn {
       if (isSyncing) return
       if (document.visibilityState !== 'visible') return
       triggerSync()
-        .then(() => { toast.success(`已同步 · ${new Date().toLocaleString()}`) })
         .catch((e) => { console.log(e) })
     }
   })
@@ -255,7 +256,6 @@ export function useSync(): UseSyncReturn {
       if (isSyncingRef.current) return
       if (document.visibilityState === 'visible') {
         pullIfPossible()
-          .then(() => { toast.success(`已同步 · ${new Date().toLocaleString()}`) })
           .catch(() => {})
       } else {
         if (!isDirtyRef.current) return
@@ -285,7 +285,7 @@ export function useSync(): UseSyncReturn {
       try {
         await pushIfPossible()
         setStatus('success')
-        toast.success(`已同步 · ${new Date().toLocaleString()}`)
+        showCloudSyncSuccessIndicator()
       } catch {
         setStatus('error')
       } finally {
