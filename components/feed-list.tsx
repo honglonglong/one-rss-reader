@@ -136,6 +136,11 @@ export function FeedList({
   const isRefreshing = refreshingFeedIds.size > 0
   const [isRefreshingAfterSync, setIsRefreshingAfterSync] = useState(false)
   const isRefreshingAfterSyncRef = useRef(false)
+  const isSyncingRef = useRef(isSyncing)
+
+  useEffect(() => {
+    isSyncingRef.current = isSyncing
+  }, [isSyncing])
 
   // When cloud sync brings in new article stubs, auto-refresh those feeds to fill content
   useEffect(() => {
@@ -298,7 +303,20 @@ export function FeedList({
   handleRefreshRef.current = handleRefresh
 
   useEffect(() => {
-    const id = setInterval(() => { handleRefreshRef.current() }, 3_600_000)
+    const refreshWhenSyncComplete = () => {
+      if (!isSyncingRef.current) {
+        void handleRefreshRef.current()
+        return
+      }
+
+      const check = setInterval(() => {
+        if (isSyncingRef.current) return
+        clearInterval(check)
+        void handleRefreshRef.current()
+      }, 1000)
+    }
+
+    const id = setInterval(refreshWhenSyncComplete, 3_600_000)
     return () => clearInterval(id)
   }, [])
 
