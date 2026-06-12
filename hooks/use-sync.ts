@@ -17,8 +17,10 @@ export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error'
 
 // How often the 15-minute periodic full sync fires
 const AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000
+// How long to suppress repeated foreground-triggered pulls after switching back
+const FOREGROUND_PULL_THROTTLE_MS = 15 * 1000
 // How long to wait after markDirty() before uploading (batches rapid read events)
-const DIRTY_PUSH_DELAY_MS = 10 * 1000
+const DIRTY_PUSH_DELAY_MS = 15 * 1000
 
 export interface UseSyncReturn {
   encryptedConfig: EncryptedSyncConfig | null
@@ -74,6 +76,7 @@ export function useSync(): UseSyncReturn {
   // Dirty-push state: tracks whether local changes haven't been uploaded yet
   const isDirtyRef = useRef(false)
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastForegroundPullAtRef = useRef(0)
 
   // ─── doPull: download remote snapshot and merge into local DB ─────────────
   const doPull = useCallback(async (decrypted: SyncConfig) => {
@@ -255,6 +258,9 @@ export function useSync(): UseSyncReturn {
     const onVisibilityChange = () => {
       if (isSyncingRef.current) return
       if (document.visibilityState === 'visible') {
+        const now = Date.now()
+        if (now - lastForegroundPullAtRef.current < FOREGROUND_PULL_THROTTLE_MS) return
+        lastForegroundPullAtRef.current = now
         pullIfPossible()
           .catch(() => {})
       } else {
