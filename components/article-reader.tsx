@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import {
@@ -17,10 +17,12 @@ import {
   Minimize2,
   Wand2,
   Loader2,
+  List,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { useArticles, useArticle } from '@/hooks/use-articles'
 import { useHighlights } from '@/hooks/use-highlights'
@@ -31,6 +33,8 @@ import { ReadingSettings } from './reading-settings'
 import { HighlightToolbar } from './highlight-toolbar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { toastError } from '@/lib/error-utils'
 import type { Article, HighlightColor, Highlight } from '@/lib/types'
 import { toast } from 'sonner'
@@ -48,6 +52,63 @@ const THEME_CLASSES = {
   light: 'bg-white text-zinc-900',
   dark: 'bg-zinc-900 text-zinc-100',
   sepia: 'bg-amber-50 text-amber-950',
+}
+
+interface OutlineItem {
+  id: string
+  title: string
+  level: number
+}
+
+interface OutlineState {
+  html: string
+  items: OutlineItem[]
+}
+
+function slugifyOutlineTitle(title: string) {
+  return title
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function buildOutlineState(html: string): OutlineState {
+  if (!html) {
+    return { html, items: [] }
+  }
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+  const headings = Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+  const usedIds = new Map<string, number>()
+  const items: OutlineItem[] = []
+
+  headings.forEach((heading, index) => {
+    const title = heading.textContent?.replace(/\s+/g, ' ').trim()
+    if (!title) return
+
+    const level = Number(heading.tagName.slice(1))
+    const baseId = slugifyOutlineTitle(title) || `section-${index + 1}`
+    const duplicateCount = usedIds.get(baseId) ?? 0
+    usedIds.set(baseId, duplicateCount + 1)
+    const id = duplicateCount === 0 ? baseId : `${baseId}-${duplicateCount + 1}`
+
+    const anchor = doc.createElement('a')
+    anchor.className = 'rss-reader-outline-achor'
+    anchor.id = id
+    anchor.setAttribute('aria-hidden', 'true')
+    anchor.setAttribute('tabindex', '-1')
+    heading.insertBefore(anchor, heading.firstChild)
+
+    items.push({ id, title, level })
+  })
+
+  return {
+    html: doc.body.innerHTML,
+    items,
+  }
 }
 
 interface ArticleReaderProps {
@@ -75,10 +136,20 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     containerSelector: string
   } | null>(null)
   const [showHighlights, setShowHighlights] = useState(false)
+  const [showOutline, setShowOutline] = useState(false)
   const [isFetchingContent, setIsFetchingContent] = useState(false)
+  const [readingProgress, setReadingProgress] = useState(0)
   
   const contentRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  const articleContent = displayArticle?.content ?? ''
+  const readingTime = getReadingTime(articleContent)
+  const pubDate = new Date(displayArticle?.pubDate ?? Date.now())
+  const sanitizedContent = useMemo(() => sanitizeHtml(articleContent), [articleContent])
+  const outlineState = useMemo(() => buildOutlineState(sanitizedContent), [sanitizedContent])
+  const outlineBaseLevel =
+    outlineState.items.length > 0 ? Math.min(...outlineState.items.map((item) => item.level)) : 0
 
   useEffect(() => {
     if (article && !article.isRead) {
@@ -88,9 +159,47 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0
     }
+    setReadingProgress(0)
   }, [article?.id])
 
-  // Force all links in article content to open in new tab and ensure single-tap works on mobile
+  useEffect(() => {
+    setShowOutline(false)
+  }, [article?.id])
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const updateReadingProgress = () => {
+      const totalScroll = container.scrollHeight - container.clientHeight
+
+      if (totalScroll <= 0) {
+        setReadingProgress(100)
+        return
+      }
+
+      const progress = (container.scrollTop / totalScroll) * 100
+      setReadingProgress(Math.min(100, Math.max(0, progress)))
+    }
+
+    updateReadingProgress()
+    container.addEventListener('scroll', updateReadingProgress, { passive: true })
+    window.addEventListener('resize', updateReadingProgress)
+
+    const resizeObserver = new ResizeObserver(updateReadingProgress)
+    resizeObserver.observe(container)
+    if (contentRef.current) {
+      resizeObserver.observe(contentRef.current)
+    }
+
+    return () => {
+      container.removeEventListener('scroll', updateReadingProgress)
+      window.removeEventListener('resize', updateReadingProgress)
+      resizeObserver.disconnect()
+    }
+  }, [outlineState.html])
+
+  // Force all links in the rendered article content to open in new tab and ensure single-tap works on mobile
   useEffect(() => {
     if (!contentRef.current) return
     const links = contentRef.current.querySelectorAll<HTMLAnchorElement>('a[href]')
@@ -99,7 +208,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
       link.setAttribute('rel', 'noopener noreferrer')
       link.style.touchAction = 'manipulation'
     })
-  }, [article?.id])
+  }, [outlineState.html])
 
   // Prevent video/audio autoplay
   useEffect(() => {
@@ -108,7 +217,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
       el.removeAttribute('autoplay')
       el.pause()
     })
-  }, [article?.id])
+  }, [outlineState.html])
 
   // Handle text selection
   const handleMouseUp = useCallback(() => {
@@ -208,6 +317,23 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     window.open(href, '_blank', 'noopener,noreferrer')
   }, [])
 
+  const handleOutlineClick = useCallback((anchorId: string) => {
+    const container = scrollContainerRef.current
+    const target = document.getElementById(anchorId)
+
+    if (!container || !target) return
+
+    const containerRect = container.getBoundingClientRect()
+    const targetRect = target.getBoundingClientRect()
+    const top = container.scrollTop + targetRect.top - containerRect.top - 24
+
+    container.scrollTo({
+      top: Math.max(0, top),
+      behavior: 'smooth',
+    })
+    setShowOutline(false)
+  }, [])
+
   if (!article) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-muted-foreground bg-muted/30">
@@ -216,13 +342,9 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     )
   }
 
-  const readingTime = getReadingTime(displayArticle.content)
-  const pubDate = new Date(displayArticle.pubDate)
-  const sanitizedContent = sanitizeHtml(displayArticle.content)
-
   return (
     <div
-      className="flex h-full overflow-hidden"
+      className="relative flex h-full overflow-hidden"
     >
       <div
         className={cn(
@@ -326,6 +448,8 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
           </div>
         </div>
 
+        <Progress value={readingProgress} className="h-[2px] rounded-none" />
+
         {/* Content - 独立滚动区域 */}
         <div
           ref={scrollContainerRef}
@@ -373,12 +497,88 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
                 fontSize: settings.fontSize,
                 lineHeight: settings.lineHeight,
               }}
-              dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+              dangerouslySetInnerHTML={{ __html: outlineState.html }}
               onMouseUp={handleMouseUp}
               onClick={handleContentClick}
             />
           </article>
         </div>
+
+        {outlineState.items.length > 0 && (
+          <div className="absolute right-4 top-16 z-40">
+            {isMobile ? (
+              <Sheet open={showOutline} onOpenChange={setShowOutline}>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="size-10 rounded-full border border-border/70 bg-background/90 shadow-lg backdrop-blur"
+                  onClick={() => setShowOutline(true)}
+                  title="文章大纲"
+                  aria-label="文章大纲"
+                >
+                  <List className="size-5" />
+                </Button>
+                <SheetContent side="bottom" className="h-[70vh] p-0">
+                  <SheetHeader className="border-b border-border/50 pb-3">
+                    <SheetTitle>文章大纲</SheetTitle>
+                    <p className="text-xs text-muted-foreground">{outlineState.items.length} 个标题</p>
+                  </SheetHeader>
+                  <ScrollArea className="h-[calc(70vh-4.75rem)]">
+                    <div className="flex flex-col gap-1 p-3 pb-6">
+                      {outlineState.items.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                          style={{ paddingLeft: 12 + (item.level - outlineBaseLevel) * 12 }}
+                          onClick={() => handleOutlineClick(item.id)}
+                        >
+                          <span className="line-clamp-2">{item.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </SheetContent>
+              </Sheet>
+            ) : (
+              <Popover open={showOutline} onOpenChange={setShowOutline}>
+                <PopoverAnchor asChild>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="size-10 rounded-full border border-border/70 bg-background/90 shadow-lg backdrop-blur"
+                    onClick={() => setShowOutline((current) => !current)}
+                    title="文章大纲"
+                    aria-label="文章大纲"
+                  >
+                    <List className="size-5" />
+                  </Button>
+                </PopoverAnchor>
+                <PopoverContent align="end" side="bottom" sideOffset={12} className="w-80 p-0">
+                  <div className="border-b border-border/50 px-4 py-3">
+                    <p className="text-sm font-medium">文章大纲</p>
+                    <p className="text-xs text-muted-foreground">{outlineState.items.length} 个标题</p>
+                  </div>
+                  <ScrollArea className="max-h-96">
+                    <div className="flex flex-col gap-1 p-2 pb-3">
+                      {outlineState.items.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                          style={{ paddingLeft: 12 + (item.level - outlineBaseLevel) * 12 }}
+                          onClick={() => handleOutlineClick(item.id)}
+                        >
+                          <span className="line-clamp-2">{item.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+        )}
 
         <HighlightToolbar
           position={toolbarPosition}

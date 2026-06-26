@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import {
@@ -91,6 +92,11 @@ interface ChangelogEntry {
 
 type FeedRefreshResult = 'refreshed' | 'skipped' | 'failed'
 
+interface RefreshProgressState {
+  completed: number
+  total: number
+}
+
 /** Returns true if version string `a` is strictly greater than `b` (semver). */
 function semverGt(a: string, b: string): boolean {
   const pa = a.split('.').map(Number)
@@ -134,6 +140,7 @@ export function FeedList({
   const [editTarget, setEditTarget] = useState<Feed | null>(null)
   const [refreshingFeedIds, setRefreshingFeedIds] = useState<Set<string>>(new Set())
   const isRefreshing = refreshingFeedIds.size > 0
+  const [refreshProgress, setRefreshProgress] = useState<RefreshProgressState | null>(null)
   const [isRefreshingAfterSync, setIsRefreshingAfterSync] = useState(false)
   const isRefreshingAfterSyncRef = useRef(false)
   const isSyncingRef = useRef(isSyncing)
@@ -277,25 +284,43 @@ export function FeedList({
     const feedsSnapshot = [...feeds]
     if (feedsSnapshot.length === 0) return
     const queue = [...feedsSnapshot]
+    const total = feedsSnapshot.length
+    let completed = 0
     let failCount = 0
+
+    setRefreshProgress({ completed: 0, total })
+
+    const markCompleted = () => {
+      completed += 1
+      setRefreshProgress({ completed, total })
+    }
+
     const worker = async () => {
       while (queue.length > 0) {
         const feed = queue.shift()!
-        const result = await refreshSingleFeed(feed.id)
-        if (result === 'failed') {
-          failCount++
+        try {
+          const result = await refreshSingleFeed(feed.id)
+          if (result === 'failed') {
+            failCount++
+          }
+        } finally {
+          markCompleted()
         }
       }
     }
-    await Promise.all(
-      Array.from({ length: Math.min(2, feedsSnapshot.length) }, () => worker())
-    )
-    if (failCount === 0) {
-      toast.success('已刷新所有订阅')
-    } else if (failCount < feedsSnapshot.length) {
-      toast.warning(`${failCount} 个订阅刷新失败`)
-    } else {
-      toast.error('所有订阅刷新失败')
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(2, feedsSnapshot.length) }, () => worker())
+      )
+      if (failCount === 0) {
+        toast.success('已刷新所有订阅')
+      } else if (failCount < feedsSnapshot.length) {
+        toast.warning(`${failCount} 个订阅刷新失败`)
+      } else {
+        toast.error('所有订阅刷新失败')
+      }
+    } finally {
+      setRefreshProgress(null)
     }
   }
 
@@ -434,6 +459,18 @@ export function FeedList({
           <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} />
         </div>
       </div>
+
+      {refreshProgress && refreshProgress.total > 0 && (
+        <div className="px-4 pt-3 pb-2 space-y-2 border-b border-sidebar-border">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>正在刷新所有订阅</span>
+            <span>
+              {refreshProgress.completed}/{refreshProgress.total} · 剩余 {Math.max(refreshProgress.total - refreshProgress.completed, 0)} 个
+            </span>
+          </div>
+          <Progress value={(refreshProgress.completed / refreshProgress.total) * 100} className="h-1.5" />
+        </div>
+      )}
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-2" style={{ fontSize: `${listFontSize}px` }}>

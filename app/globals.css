@@ -133,6 +133,7 @@
 .article-content {
   h1, h2, h3, h4, h5, h6 {
     @apply font-semibold mt-6 mb-3 leading-tight;
+    scroll-margin-top: 1.5rem;
   }
   h1 { @apply text-2xl; }
   h2 { @apply text-xl; }
@@ -205,6 +206,16 @@
   figcaption {
     @apply text-sm text-muted-foreground text-center mt-2;
   }
+}
+
+.rss-reader-outline-achor {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  line-height: 0;
+  vertical-align: top;
+  scroll-margin-top: 1.5rem;
 }
 
 /* Highlight colors */
