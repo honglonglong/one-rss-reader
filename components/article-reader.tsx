@@ -458,7 +458,7 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
           className="flex-1 overflow-y-auto"
         >
           <article
-            className="mx-auto px-6 py-8"
+            className="mx-auto px-6 py-8 overflow-x-hidden"
             style={{ maxWidth: settings.maxWidth }}
           >
             <header className="mb-8">

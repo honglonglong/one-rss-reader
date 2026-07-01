@@ -141,10 +141,15 @@
   
   p {
     @apply mb-4;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   
   a {
     @apply text-primary underline underline-offset-2 hover:no-underline;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    hyphens: auto;
   }
   
   img {
@@ -153,6 +158,8 @@
   
   blockquote {
     @apply border-l-4 border-muted-foreground/30 pl-4 italic my-4 text-muted-foreground;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   
   code {
@@ -181,6 +188,8 @@
   
   li {
     @apply mb-1;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   
   table {
@@ -189,6 +198,8 @@
   
   th, td {
     @apply border border-border px-3 py-2 text-left;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   
   th {
