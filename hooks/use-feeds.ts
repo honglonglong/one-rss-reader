@@ -2,6 +2,7 @@
 
 import { useRef } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
+import { useOffline } from '@/hooks/use-offline'
 import { getAllFeeds, addFeed, deleteFeed, getFeed, getFeedByUrl, updateFeedGroup, addArticles, deleteNonSavedArticlesByFeed, getArticlesByFeed, updateFeed, updateFeedLastRefreshed, CLOUD_SYNC_LOOKBACK_MS } from '@/lib/db'
 import { parseFeed, createFeedFromParsed } from '@/lib/rss-parser'
 import type { Feed } from '@/lib/types'
@@ -37,6 +38,7 @@ function estimateUpdateInterval(articles: { pubDate: number }[]): number {
 
 export function useFeeds() {
   const { mutate: globalMutate } = useSWRConfig()
+  const isOffline = useOffline()
   const inFlightRefreshRef = useRef<Map<string, Promise<boolean>>>(new Map())
   const { data: feeds, error, isLoading, mutate } = useSWR<Feed[]>(
     'feeds',
@@ -45,6 +47,10 @@ export function useFeeds() {
   )
 
   const subscribe = async (url: string, group?: string): Promise<Feed> => {
+    if (isOffline) {
+      throw new Error('离线时无法订阅新源')
+    }
+
     // Check if already subscribed (getFeedByUrl returns even soft-deleted records)
     const existing = await getFeedByUrl(url)
     if (existing && !existing.deletedAt) {
@@ -96,6 +102,10 @@ export function useFeeds() {
   }
 
   const refresh = async (feedId?: string, options?: { force?: boolean }): Promise<boolean> => {
+    if (isOffline) {
+      throw new Error('离线时只能浏览本地内容，无法刷新订阅')
+    }
+
     let feedsToRefresh: Feed[]
     if (feedId) {
       // Prefer SWR cache; fall back to IndexedDB when cache is stale (e.g. right after a cloud sync)

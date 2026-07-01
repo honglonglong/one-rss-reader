@@ -18,6 +18,7 @@ import { useArticles, useSavedArticles } from '@/hooks/use-articles'
 import { useReadingSettings } from '@/hooks/use-reading-settings'
 import { useListFontSize } from '@/hooks/use-list-font-size'
 import { useFeeds } from '@/hooks/use-feeds'
+import { useOffline } from '@/hooks/use-offline'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { htmlToText, getReadingTime } from '@/lib/rss-parser'
 import { toast } from 'sonner'
@@ -39,8 +40,9 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
 
   const { feeds, refresh } = useFeeds()
   const isMobile = useIsMobile()
+  const isOffline = useOffline()
   const feedTitle = view === 'feed' ? feeds.find(f => f.id === feedId)?.title : undefined
-  const canPullRefresh = isMobile && view === 'feed' && !!feedId
+  const canPullRefresh = isMobile && view === 'feed' && !!feedId && !isOffline
   const containerRef = useRef<HTMLDivElement>(null)
   const touchStartYRef = useRef(0)
   const [pullY, setPullY] = useState(0)
@@ -129,6 +131,8 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
   }
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (isOffline) return
+
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX
       const dy = e.touches[0].clientY - e.touches[1].clientY
@@ -162,6 +166,11 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
   }
 
   const handleTouchEnd = async () => {
+    if (isOffline) {
+      setPullY(0)
+      return
+    }
+
     if (isPinchingRef.current) {
       isPinchingRef.current = false
       pinchStartDistRef.current = 0

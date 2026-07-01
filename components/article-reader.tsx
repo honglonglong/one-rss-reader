@@ -27,6 +27,7 @@ import { Separator } from '@/components/ui/separator'
 import { useArticles, useArticle } from '@/hooks/use-articles'
 import { useHighlights } from '@/hooks/use-highlights'
 import { useReadingSettings } from '@/hooks/use-reading-settings'
+import { useOffline } from '@/hooks/use-offline'
 import { sanitizeHtml, getReadingTime } from '@/lib/rss-parser'
 import { generateMarkdown, downloadMarkdown, generateFilename } from '@/lib/markdown-export'
 import { ReadingSettings } from './reading-settings'
@@ -120,6 +121,7 @@ interface ArticleReaderProps {
 
 export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: ArticleReaderProps) {
   const { markAsRead, toggleSaved, fetchFullContent } = useArticles()
+  const isOffline = useOffline()
   // SWR-backed live view of the article — auto-refreshes after fetchFullContent
   // invalidates the 'article-${id}' cache key via globalMutate.
   const { article: liveArticle } = useArticle(article?.id ?? null)
@@ -398,12 +400,12 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
                 displayArticle.isContentManuallyFilled && 'text-primary'
               )}
               onClick={handleFetchFullContent}
-              disabled={isFetchingContent}
-              title={
-                displayArticle.isContentManuallyFilled
+              disabled={isFetchingContent || isOffline}
+              title={isOffline
+                ? '离线时只能浏览本地内容'
+                : displayArticle.isContentManuallyFilled
                   ? '已补全文（点击重新抓取）'
-                  : '智能补全文'
-              }
+                  : '智能补全文'}
             >
               {isFetchingContent ? (
                 <Loader2 className="size-5 lg:size-4 animate-spin" />

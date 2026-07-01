@@ -1,6 +1,7 @@
 'use client'
 
 import useSWR, { useSWRConfig } from 'swr'
+import { useOffline } from '@/hooks/use-offline'
 import {
   getAllArticles,
   getArticlesByFeed,
@@ -63,6 +64,7 @@ export function findReadMoreUrl(content: string, articleLink: string): string | 
 export function useArticles(feedId?: string, hideRead: boolean = false) {
   const { mutate: globalMutate } = useSWRConfig()
   const { markDirty } = useSyncContext()
+  const isOffline = useOffline()
   const key = feedId 
     ? `articles-${feedId}${hideRead ? '-unread' : ''}` 
     : `articles-all${hideRead ? '-unread' : ''}`
@@ -119,6 +121,10 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
    * - Calling again clears the flag first (force re-fetch)
    */
   const fetchFullContent = async (article: Article): Promise<void> => {
+    if (isOffline) {
+      throw new Error('离线时无法补全文章内容')
+    }
+
     // Determine the URL to fetch
     const readMoreUrl = findReadMoreUrl(article.content, article.link)
     const targetUrl = readMoreUrl || article.link

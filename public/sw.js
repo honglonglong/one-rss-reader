@@ -34,7 +34,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim()
 })
 
-// Fetch event - network first, fallback to cache
+// Fetch event - cache first for the app shell and static assets
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
@@ -60,21 +60,33 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // For page navigations, use network first
+  // For page navigations, prefer the cached app shell and refresh it in the background.
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const responseClone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone)
+      caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) {
+          const updatePromise = fetch(request)
+            .then((response) => {
+              if (!response.ok) return
+              const responseClone = response.clone()
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request, responseClone)
+              })
+            })
+            .catch(() => {})
+          event.waitUntil(updatePromise)
+          return cachedResponse
+        }
+
+        return fetch(request)
+          .then((response) => {
+            const responseClone = response.clone()
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone)
+            })
+            return response
           })
-          return response
-        })
-        .catch(() => {
-          return caches.match(request).then((cachedResponse) => {
-            return cachedResponse || caches.match('/')
-          })
+          .catch(() => caches.match('/'))
         })
     )
     return

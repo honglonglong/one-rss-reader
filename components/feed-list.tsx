@@ -63,7 +63,7 @@ import {
 } from '@/components/ui/collapsible'
 import { useFeeds } from '@/hooks/use-feeds'
 import { useUnreadCounts } from '@/hooks/use-articles'
-import { useServiceWorker } from '@/hooks/use-offline'
+import { useOffline, useServiceWorker } from '@/hooks/use-offline'
 import { useListFontSize } from '@/hooks/use-list-font-size'
 import { AddFeedDialog } from './add-feed-dialog'
 import SettingsPanel from './settings-panel'
@@ -121,6 +121,7 @@ export function FeedList({
   const { feeds, unsubscribe, refresh, setFeedGroup, editFeed, isLoading } = useFeeds()
   const unreadCounts = useUnreadCounts()
   const { update } = useServiceWorker()
+  const isOffline = useOffline()
   const { listFontSize } = useListFontSize()
   const { encryptedConfig, isSyncing, lastSyncAt, lastPulledAt, needsPassphrase, triggerSync, feedsToRefreshAfterSync, clearFeedsToRefreshAfterSync } = useSyncContext()
 
@@ -271,6 +272,8 @@ export function FeedList({
   }
 
   const handleRefresh = async () => {
+    if (isOffline) return
+
     // Wait for any in-progress post-sync refresh to complete first
     if (isRefreshingAfterSyncRef.current) {
       await new Promise<void>((resolve) => {
@@ -329,6 +332,7 @@ export function FeedList({
 
   useEffect(() => {
     const refreshWhenSyncComplete = () => {
+      if (isOffline) return
       if (!isSyncingRef.current) {
         void handleRefreshRef.current()
         return
@@ -411,7 +415,8 @@ export function FeedList({
             size="icon"
             className="size-10 lg:size-8"
             onClick={handleRefresh}
-            disabled={isRefreshing}
+            disabled={isRefreshing || isOffline}
+            title={isOffline ? '离线时只能浏览本地内容' : '刷新全部订阅'}
           >
             <RefreshCw className={cn('size-5 lg:size-4', isRefreshing && 'animate-spin')} />
           </Button>
