@@ -520,12 +520,12 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
                 >
                   <List className="size-5" />
                 </Button>
-                <SheetContent side="bottom" className="h-[70vh] p-0">
-                  <SheetHeader className="border-b border-border/50 pb-3">
+                <SheetContent side="bottom" className="h-[70vh] flex flex-col overflow-hidden p-0">
+                  <SheetHeader className="shrink-0 border-b border-border/50 pb-3">
                     <SheetTitle>文章大纲</SheetTitle>
                     <p className="text-xs text-muted-foreground">{outlineState.items.length} 个标题</p>
                   </SheetHeader>
-                  <ScrollArea className="h-[calc(70vh-4.75rem)]">
+                  <ScrollArea type="always" className="min-h-0 flex-1 overflow-y-auto">
                     <div className="flex flex-col gap-1 p-3 pb-6">
                       {outlineState.items.map((item) => (
                         <button
@@ -556,12 +556,17 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
                     <List className="size-5" />
                   </Button>
                 </PopoverAnchor>
-                <PopoverContent align="end" side="bottom" sideOffset={12} className="w-80 p-0">
-                  <div className="border-b border-border/50 px-4 py-3">
+                <PopoverContent
+                  align="end"
+                  side="bottom"
+                  sideOffset={12}
+                  className="flex max-h-[calc(100vh-5rem)] w-80 flex-col overflow-hidden p-0 pb-5"
+                >
+                  <div className="shrink-0 border-b border-border/50 px-4 py-3">
                     <p className="text-sm font-medium">文章大纲</p>
                     <p className="text-xs text-muted-foreground">{outlineState.items.length} 个标题</p>
                   </div>
-                  <ScrollArea className="max-h-96">
+                  <ScrollArea type="always" className="min-h-0 flex-1 overflow-y-auto">
                     <div className="flex flex-col gap-1 p-2 pb-3">
                       {outlineState.items.map((item) => (
                         <button
