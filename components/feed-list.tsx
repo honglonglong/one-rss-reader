@@ -577,7 +577,7 @@ export function FeedList({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowUpdateDialog(false)}>取消</Button>
-            <Button onClick={() => { setShowUpdateDialog(false); update(); window.location.reload() }}>升级并重启</Button>
+            <Button onClick={() => { setShowUpdateDialog(false); update() }}>升级并重启</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -64,20 +64,23 @@ export function sanitizeHtml(html: string): string {
   // Remove style tags and their content
   clean = clean.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
 
-  // Remove inline sizing/styles that can keep fetched content wider than the reader
-  clean = clean.replace(/\s*style\s*=\s*["'][^"']*["']/gi, '')
-  clean = clean.replace(/\s*(width|height)\s*=\s*["'][^"']*["']/gi, '')
-  clean = clean.replace(/\s*(width|height)\s*=\s*[^\s>]+/gi, '')
+  // Remove inline sizing/styles that can keep fetched content wider than the reader.
+  // Require a leading whitespace so we only strip real attributes, not
+  // "width=" / "height=" substrings that appear inside query-string URLs
+  // (e.g. CDN image resize params like ".../image/width=2000,quality=80/...").
+  clean = clean.replace(/\s+style\s*=\s*["'][^"']*["']/gi, '')
+  clean = clean.replace(/\s+(width|height)\s*=\s*["'][^"']*["']/gi, '')
+  clean = clean.replace(/\s+(width|height)\s*=\s*[^\s>]+/gi, '')
   
   // Remove event handlers
-  clean = clean.replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, '')
-  clean = clean.replace(/\s*on\w+\s*=\s*[^\s>]*/gi, '')
+  clean = clean.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
+  clean = clean.replace(/\s+on\w+\s*=\s*[^\s>]*/gi, '')
   
   // Remove javascript: urls
   clean = clean.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
 
   // Remove autoplay attribute from video/audio elements
-  clean = clean.replace(/\s*autoplay(\s*=\s*["'][^"']*["'])?/gi, '')
+  clean = clean.replace(/\s+autoplay(\s*=\s*["'][^"']*["'])?/gi, '')
 
   return clean
 }

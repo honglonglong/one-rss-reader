@@ -151,11 +151,46 @@
     word-break: break-word;
     hyphens: auto;
   }
-  
+
   img {
-    @apply max-w-full h-auto rounded-lg my-4;
+    @apply max-w-full h-auto rounded-lg;
   }
-  
+
+  .rss-reader-image-shell {
+    @apply relative block my-4 overflow-hidden rounded-lg border border-dashed border-border bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground;
+  }
+
+  .rss-reader-video-shell {
+    @apply relative block my-4 overflow-hidden rounded-lg border border-dashed border-border bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground;
+  }
+
+  .rss-reader-image-shell img,
+  .rss-reader-image-media {
+    @apply block w-full max-w-full h-auto rounded-none my-0;
+  }
+
+  .rss-reader-video-shell video,
+  .rss-reader-video-media {
+    @apply block w-full max-w-full h-auto rounded-none my-0;
+  }
+
+  /* React (via portal) owns loading/loaded/broken state on this inner wrapper now */
+  .rss-reader-media-inner {
+    @apply relative block;
+  }
+
+  .rss-reader-media-inner[data-status='loading'],
+  .rss-reader-media-inner[data-status='broken'] {
+    @apply min-h-40;
+  }
+
+  /* Overlays the (always-rendered, never display:none-toggled) img/video while
+     loading, then unmounts on load — a style toggle on the media element
+     itself was observed to sometimes never repaint in Chromium. */
+  .rss-reader-media-placeholder {
+    @apply absolute inset-0 flex items-center justify-center px-4 text-center text-sm text-muted-foreground;
+  }
+
   blockquote {
     @apply border-l-4 border-muted-foreground/30 pl-4 italic my-4 text-muted-foreground;
     overflow-wrap: anywhere;

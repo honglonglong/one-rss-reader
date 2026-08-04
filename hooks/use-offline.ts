@@ -28,16 +28,28 @@ export function useServiceWorker() {
   const [isReady, setIsReady] = useState(false)
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null)
+  // Guards against reloading twice (once from the fallback timer in update(),
+  // once from this event) — whichever fires first wins.
+  const hasReloadedRef = useRef(false)
+  const reloadOnce = useRef(() => {
+    if (hasReloadedRef.current) return
+    hasReloadedRef.current = true
+    window.location.reload()
+  }).current
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
+    // Never register the SW in dev — it caches the app shell/bundle and only
+    // swaps in a new version once the user confirms an update, so every dev
+    // reload after a code change would keep serving stale JS otherwise.
+    if (process.env.NODE_ENV !== 'production') return
 
     // Reload as soon as the new SW takes control — fired after skipWaiting().
     // Using this event (rather than reloading immediately after postMessage) is
     // more reliable on Safari because the SW may not have activated yet by the
     // time postMessage returns.
     const handleControllerChange = () => {
-      window.location.reload()
+      reloadOnce()
     }
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
 
@@ -93,15 +105,41 @@ export function useServiceWorker() {
 
   const update = () => {
     const registration = registrationRef.current
+    const sendSkipWaiting = (worker: ServiceWorker) => {
+      worker.postMessage({ type: 'SKIP_WAITING' })
+    }
+
     // Prefer posting to the waiting worker directly. Posting to
     // navigator.serviceWorker.controller silently fails on Safari when the
     // controlling SW is the *old* worker and the new one is still waiting.
     if (registration?.waiting) {
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' })
-    } else if (navigator.serviceWorker?.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' })
+      sendSkipWaiting(registration.waiting)
+    } else {
+      // No worker is waiting yet — this happens when the currently running
+      // page's own JS bundle is already stale (it can only register the new
+      // SW URL once it reloads onto the new bundle), so a click on "upgrade"
+      // may land before installation has even started. Force a fresh check
+      // and post SKIP_WAITING as soon as a worker finishes installing,
+      // instead of doing nothing (which previously made the reload below
+      // just reload the same old, unchanged SW/cache).
+      registration?.update().catch(() => {/* offline — nothing to install */})
+      const onUpdateFound = () => {
+        const newWorker = registration?.installing
+        newWorker?.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed') {
+            sendSkipWaiting(newWorker)
+          }
+        })
+      }
+      registration?.addEventListener('updatefound', onUpdateFound)
     }
+
     // Actual reload is triggered by the 'controllerchange' listener above.
+    // Fallback in case no new SW is ever found (e.g. this build's bundle is
+    // already current) or 'controllerchange' never fires — without this the
+    // page would appear stuck forever on a stale version after clicking
+    // "upgrade".
+    setTimeout(reloadOnce, 5000)
   }
 
   return { isReady, updateAvailable, update }

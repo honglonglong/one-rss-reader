@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo, useLayoutEffect, memo, forwardRef } from 'react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import {
@@ -106,11 +106,223 @@ function buildOutlineState(html: string): OutlineState {
     items.push({ id, title, level })
   })
 
+  const images = Array.from(doc.querySelectorAll('img'))
+
+  images.forEach((image, index) => {
+    const shell = doc.createElement('span')
+    const src = image.getAttribute('src')?.trim() || ''
+    const alt = image.getAttribute('alt')?.trim() || ''
+
+    shell.className = 'rss-reader-image-shell'
+    // Stable id lets the portal effect find this exact shell after re-render
+    shell.dataset.imageId = `rss-img-${index}`
+    shell.dataset.imageStatus = src ? 'loading' : 'broken'
+    shell.textContent = src ? '<图片加载中>' : alt ? `${alt}（加载失败）` : '<图片加载失败>'
+
+    if (src) {
+      shell.dataset.imageSrc = src
+    }
+
+    if (alt) {
+      shell.dataset.imageLabel = alt
+    }
+
+    const srcset = image.getAttribute('srcset')?.trim()
+    if (srcset) {
+      shell.dataset.imageSrcset = srcset
+    }
+
+    const sizes = image.getAttribute('sizes')?.trim()
+    if (sizes) {
+      shell.dataset.imageSizes = sizes
+    }
+
+    image.replaceWith(shell)
+  })
+
+  const videos = Array.from(doc.querySelectorAll('video'))
+
+  videos.forEach((video, index) => {
+    const shell = doc.createElement('span')
+    // Some feeds put the URL on a nested <source> instead of video[src]
+    const src = video.getAttribute('src')?.trim() || video.querySelector('source[src]')?.getAttribute('src')?.trim() || ''
+    const poster = video.getAttribute('poster')?.trim() || ''
+
+    shell.className = 'rss-reader-video-shell'
+    shell.dataset.videoId = `rss-video-${index}`
+    shell.dataset.videoStatus = src ? 'loading' : 'broken'
+    shell.textContent = src ? '<视频加载中>' : '<视频加载失败>'
+
+    if (src) {
+      shell.dataset.videoSrc = src
+    }
+
+    if (poster) {
+      shell.dataset.videoPoster = poster
+    }
+
+    if (video.hasAttribute('controls')) {
+      shell.dataset.videoControls = 'true'
+    }
+
+    const preload = video.getAttribute('preload')?.trim()
+    if (preload) {
+      shell.dataset.videoPreload = preload
+    }
+
+    const autoplay = video.getAttribute('autoplay')
+    if (autoplay !== null) {
+      shell.dataset.videoAutoplay = 'true'
+    }
+
+    const srcset = video.getAttribute('srcset')?.trim()
+    if (srcset) {
+      shell.dataset.videoSrcset = srcset
+    }
+
+    video.replaceWith(shell)
+  })
+
   return {
     html: doc.body.innerHTML,
     items,
   }
 }
+
+const VIDEO_ERROR_MESSAGES: Record<number, string> = {
+  1: '加载已中止',
+  2: '网络错误',
+  3: '解码失败',
+  4: '格式不支持或地址无效',
+}
+
+// Build the actual <img>/<video> DOM node for a shell purely imperatively
+// (no React state/portal). dangerouslySetInnerHTML on the article body
+// gets re-applied by React far more often than its value actually
+// changes, wiping any React-portaled content inside it every time — and
+// since portaling requires a state update, that state update itself was
+// found to retrigger the reset, causing an infinite loop. Plain DOM APIs
+// sidestep this entirely: mounting media never touches React state, so it
+// can't feed back into another reset.
+function mountImageShell(shell: HTMLElement) {
+  const src = shell.dataset.imageSrc?.trim() || ''
+  const alt = shell.dataset.imageLabel || ''
+  const srcset = shell.dataset.imageSrcset
+  const sizes = shell.dataset.imageSizes
+
+  const inner = document.createElement('span')
+  inner.className = 'rss-reader-media-inner'
+  inner.dataset.status = src ? 'loading' : 'broken'
+
+  const placeholder = document.createElement('span')
+  placeholder.className = 'rss-reader-media-placeholder'
+  placeholder.textContent = src ? '<图片加载中>' : alt ? `${alt}（加载失败）` : '<图片加载失败>'
+  inner.appendChild(placeholder)
+
+  if (src) {
+    const img = document.createElement('img')
+    img.src = src
+    if (srcset) img.srcset = srcset
+    if (sizes) img.sizes = sizes
+    img.alt = alt || '图片'
+    img.loading = 'eager'
+    img.decoding = 'async'
+    img.className = 'rss-reader-image-media'
+    img.addEventListener('load', () => {
+      inner.dataset.status = 'loaded'
+      placeholder.remove()
+    })
+    img.addEventListener('error', () => {
+      inner.dataset.status = 'broken'
+      placeholder.textContent = alt ? `${alt}（加载失败）` : '<图片加载失败>'
+    })
+    inner.insertBefore(img, placeholder)
+  }
+
+  shell.replaceChildren(inner)
+}
+
+function mountVideoShell(shell: HTMLElement) {
+  const src = shell.dataset.videoSrc?.trim() || ''
+  const poster = shell.dataset.videoPoster
+  const srcset = shell.dataset.videoSrcset
+  const preloadAttr = shell.dataset.videoPreload
+  const preload = preloadAttr === 'auto' || preloadAttr === 'none' ? preloadAttr : 'metadata'
+  const controls = shell.dataset.videoControls === 'true'
+
+  const inner = document.createElement('span')
+  inner.className = 'rss-reader-media-inner'
+  inner.dataset.status = src ? 'loading' : 'broken'
+
+  const placeholder = document.createElement('span')
+  placeholder.className = 'rss-reader-media-placeholder'
+  placeholder.textContent = src ? '<视频加载中>' : '<视频加载失败>'
+  inner.appendChild(placeholder)
+
+  if (src) {
+    const video = document.createElement('video')
+    video.src = src
+    if (poster) video.poster = poster
+    if (srcset) video.setAttribute('srcset', srcset)
+    video.preload = preload
+    video.controls = controls
+    video.playsInline = true
+    video.muted = true
+    video.autoplay = false
+    video.className = 'rss-reader-video-media'
+    const markLoaded = () => {
+      inner.dataset.status = 'loaded'
+      placeholder.remove()
+    }
+    video.addEventListener('loadedmetadata', markLoaded)
+    video.addEventListener('canplay', markLoaded)
+    video.addEventListener('error', () => {
+      const mediaError = video.error
+      const reason = mediaError ? VIDEO_ERROR_MESSAGES[mediaError.code] : null
+      inner.dataset.status = 'broken'
+      placeholder.textContent = `<视频加载失败${reason ? `：${reason}` : ''}>`
+    })
+    inner.insertBefore(video, placeholder)
+  }
+
+  shell.replaceChildren(inner)
+}
+
+interface ArticleBodyProps {
+  html: string
+  fontFamily: string
+  fontSize: number
+  lineHeight: number
+  onMouseUp: () => void
+  onClick: (e: React.MouseEvent<HTMLDivElement>) => void
+}
+
+// Isolated in its own memoized component so unrelated parent re-renders
+// (e.g. the scroll-progress bar updating on every scroll/resize tick)
+// don't reconcile this fiber at all — React.memo bails out before host-level
+// diffing even gets a chance to touch dangerouslySetInnerHTML, which was
+// found (via instrumentation) to otherwise re-apply the HTML and wipe out
+// in-progress image/video loads, causing a loading/loaded flicker.
+const ArticleBody = memo(
+  forwardRef<HTMLDivElement, ArticleBodyProps>(function ArticleBody(
+    { html, fontFamily, fontSize, lineHeight, onMouseUp, onClick },
+    ref
+  ) {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          'article-content prose prose-zinc dark:prose-invert max-w-none',
+          fontFamily === 'serif' ? 'font-serif' : 'font-sans'
+        )}
+        style={{ fontSize, lineHeight }}
+        dangerouslySetInnerHTML={{ __html: html }}
+        onMouseUp={onMouseUp}
+        onClick={onClick}
+      />
+    )
+  })
+)
 
 interface ArticleReaderProps {
   article: Article | null
@@ -168,6 +380,54 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     setShowOutline(false)
   }, [article?.id])
 
+  // Discover image/video shells and mount the real <img>/<video> elements
+  // into them imperatively (see mountImageShell/mountVideoShell).
+  //
+  // React re-applies dangerouslySetInnerHTML to this container more often
+  // than its value actually changes (observed via instrumentation; cause
+  // not fully understood). Each reset wipes the div's real DOM and
+  // replaces it with brand new, un-mounted shell elements. A one-shot
+  // effect keyed on outlineState.html only runs once, so any reset after
+  // that leaves shells permanently empty.
+  //
+  // An earlier version used React state + createPortal to mount media,
+  // but the state update itself triggered another reset, creating an
+  // infinite loop. Mounting media with plain DOM APIs never touches React
+  // state, so re-discovery can safely keep running for the lifetime of
+  // the article view without feeding back into more resets.
+  useLayoutEffect(() => {
+    const root = contentRef.current
+    if (!root) return
+
+    const discoverAll = () => {
+      root.querySelectorAll<HTMLElement>('.rss-reader-image-shell').forEach((shell) => {
+        if (shell.dataset.portalAttached) return
+        shell.dataset.portalAttached = 'true'
+        mountImageShell(shell)
+      })
+      root.querySelectorAll<HTMLElement>('.rss-reader-video-shell').forEach((shell) => {
+        if (shell.dataset.portalAttached) return
+        shell.dataset.portalAttached = 'true'
+        mountVideoShell(shell)
+      })
+    }
+
+    let scheduled = false
+    const scheduleDiscover = () => {
+      if (scheduled) return
+      scheduled = true
+      requestAnimationFrame(() => {
+        scheduled = false
+        discoverAll()
+      })
+    }
+
+    discoverAll()
+    const observer = new MutationObserver(scheduleDiscover)
+    observer.observe(root, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [outlineState.html])
+
   useEffect(() => {
     const container = scrollContainerRef.current
     if (!container) return
@@ -212,14 +472,6 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
     })
   }, [outlineState.html])
 
-  // Prevent video/audio autoplay
-  useEffect(() => {
-    if (!contentRef.current) return
-    contentRef.current.querySelectorAll<HTMLVideoElement | HTMLAudioElement>('video, audio').forEach((el) => {
-      el.removeAttribute('autoplay')
-      el.pause()
-    })
-  }, [outlineState.html])
 
   // Handle text selection
   const handleMouseUp = useCallback(() => {
@@ -489,17 +741,12 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
 
             <Separator className="mb-8" />
 
-            <div
+            <ArticleBody
               ref={contentRef}
-              className={cn(
-                'article-content prose prose-zinc dark:prose-invert max-w-none',
-                settings.fontFamily === 'serif' ? 'font-serif' : 'font-sans'
-              )}
-              style={{
-                fontSize: settings.fontSize,
-                lineHeight: settings.lineHeight,
-              }}
-              dangerouslySetInnerHTML={{ __html: outlineState.html }}
+              html={outlineState.html}
+              fontFamily={settings.fontFamily}
+              fontSize={settings.fontSize}
+              lineHeight={settings.lineHeight}
               onMouseUp={handleMouseUp}
               onClick={handleContentClick}
             />
