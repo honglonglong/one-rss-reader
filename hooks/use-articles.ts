@@ -14,6 +14,7 @@ import {
   toggleArticleSaved,
   cleanupOldReadArticles,
   updateArticleContent,
+  revertArticleContent,
 } from '@/lib/db'
 import { useSyncContext } from '@/components/sync-provider'
 import type { Article } from '@/lib/types'
@@ -147,6 +148,15 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
     await globalMutate((k: unknown) => typeof k === 'string' && k.startsWith('article'))
   }
 
+  /** 回退到上一次抓取前的内容备份；返回 false 表示没有可回退的内容 */
+  const revertFullContent = async (articleId: string): Promise<boolean> => {
+    const reverted = await revertArticleContent(articleId)
+    if (reverted) {
+      await globalMutate((k: unknown) => typeof k === 'string' && k.startsWith('article'))
+    }
+    return reverted
+  }
+
   return {
     articles: articles || [],
     isLoading,
@@ -156,6 +166,7 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
     cleanup,
     markAllAsRead,
     fetchFullContent,
+    revertFullContent,
     mutate,
   }
 }

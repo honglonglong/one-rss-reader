@@ -332,7 +332,7 @@ interface ArticleReaderProps {
 }
 
 export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: ArticleReaderProps) {
-  const { markAsRead, toggleSaved, fetchFullContent } = useArticles()
+  const { markAsRead, toggleSaved, fetchFullContent, revertFullContent } = useArticles()
   const isOffline = useOffline()
   // SWR-backed live view of the article — auto-refreshes after fetchFullContent
   // invalidates the 'article-${id}' cache key via globalMutate.
@@ -551,14 +551,31 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
 
   const handleFetchFullContent = async () => {
     if (!article || isFetchingContent) return
+    const articleId = article.id
     setIsFetchingContent(true)
     try {
       await fetchFullContent(article)
-      toast.success('已成功补全文章内容')
+      toast.success('已成功补全文章内容', {
+        action: {
+          label: '撤销',
+          onClick: () => handleRevertFullContent(articleId),
+        },
+      })
     } catch (err) {
       toastError(err, '补全文失败')
     } finally {
       setIsFetchingContent(false)
+    }
+  }
+
+  const handleRevertFullContent = async (articleId: string) => {
+    try {
+      const reverted = await revertFullContent(articleId)
+      if (reverted) {
+        toast.success('已回退到上一次抓取的内容')
+      }
+    } catch (err) {
+      toastError(err, '回退失败')
     }
   }
 

@@ -254,8 +254,27 @@ export async function updateArticleContent(
       content,
       isContentManuallyFilled: manual,
       fullContentFetchedAt: manual ? Date.now() : undefined,
+      // 备份覆盖前的内容，供 revertArticleContent 单层回退
+      previousContent: article.content,
+      previousIsManual: article.isContentManuallyFilled,
     })
   }
+}
+
+/** 回退到上一次抓取前的正文备份；返回 false 表示没有可回退的内容 */
+export async function revertArticleContent(id: string): Promise<boolean> {
+  const db = await getDB()
+  const article = await db.get('articles', id)
+  if (!article || article.previousContent === undefined) return false
+  await db.put('articles', {
+    ...article,
+    content: article.previousContent,
+    isContentManuallyFilled: article.previousIsManual ?? false,
+    fullContentFetchedAt: article.previousIsManual ? Date.now() : undefined,
+    previousContent: undefined,
+    previousIsManual: undefined,
+  })
+  return true
 }
 
 export async function markAllArticlesAsRead(feedId?: string): Promise<number> {

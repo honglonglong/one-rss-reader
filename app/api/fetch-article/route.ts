@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseHTML } from 'linkedom'
 import { Readability } from '@mozilla/readability'
 
+// Must be >= the AbortController timeout below, otherwise Vercel kills the
+// function first and our descriptive timeout error never gets a chance to return.
+export const maxDuration = 30
+
 export async function POST(request: NextRequest) {
   try {
     const { url } = await request.json()
@@ -26,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     // Fetch page HTML with a timeout
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000)
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
     let fetchResponse: Response
     try {
       fetchResponse = await fetch(targetUrl.toString(), {
@@ -40,7 +44,7 @@ export async function POST(request: NextRequest) {
     } catch (fetchError) {
       const isTimeout = fetchError instanceof Error && fetchError.name === 'AbortError'
       const msg = isTimeout
-        ? `抓取超时 (10s): ${targetUrl.toString()}`
+        ? `抓取超时 (30s): ${targetUrl.toString()}`
         : `网络错误: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
       return NextResponse.json({ error: msg }, { status: 502 })
     } finally {

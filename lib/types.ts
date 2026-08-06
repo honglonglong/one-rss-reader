@@ -38,6 +38,8 @@ export interface Article {
   savedAt?: number // 收藏时间戳，用于 LWW 冲突解决
   isContentManuallyFilled?: boolean // 用户手动补全文，刷新时不覆盖 content
   fullContentFetchedAt?: number     // 手动补全时间戳
+  previousContent?: string          // 补全前的正文备份，用于"撤销"回退
+  previousIsManual?: boolean        // 备份内容当时是否也是手动补全的
 }
 
 export interface Highlight {
