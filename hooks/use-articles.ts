@@ -78,7 +78,13 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
       }
       return feedId ? getArticlesByFeed(feedId) : getAllArticles()
     },
-    { fallbackData: [] }
+    {
+      fallbackData: [],
+      // 已读状态的重新过滤只应由显式导航触发，避免后台自动重新验证把刚读过的文章从列表中移除
+      revalidateIfStale: false,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+    }
   )
 
   const markAsRead = async (articleId: string) => {
@@ -108,7 +114,11 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
 
   const markAllAsRead = async () => {
     const count = await markAllArticlesAsRead(feedId)
-    await mutate()
+    const now = Date.now()
+    mutate(
+      (current) => current?.map(a => (a.isRead ? a : { ...a, isRead: true, readAt: now })),
+      { revalidate: false }
+    )
     await globalMutate('unread-counts')
     markDirty()
     return count
@@ -206,6 +216,34 @@ export function useArticle(articleId: string | null) {
     isLoading,
     error,
     mutate,
+  }
+}
+
+/**
+ * 阅读器内“上一篇/下一篇”导航专用的标记已读方法。
+ * 只做乐观 patch（revalidate:false），绝不触发列表重新拉取 —
+ * 否则会在隐藏已读模式下把刚读过的文章从仍挂载的列表缓存中移除。
+ */
+export function useMarkArticleRead() {
+  const { mutate: globalMutate } = useSWRConfig()
+  const { markDirty } = useSyncContext()
+
+  return async (articleId: string) => {
+    await markArticleAsRead(articleId)
+    const patchArticle = (a: Article) =>
+      a.id === articleId ? { ...a, isRead: true, readAt: Date.now() } : a
+    await globalMutate(
+      (k: unknown) => typeof k === 'string' && k.startsWith('articles'),
+      (list?: Article[]) => list?.map(patchArticle),
+      { revalidate: false }
+    )
+    await globalMutate(
+      `article-${articleId}`,
+      (a?: Article) => (a ? patchArticle(a) : a),
+      { revalidate: false }
+    )
+    await globalMutate('unread-counts')
+    markDirty()
   }
 }
 

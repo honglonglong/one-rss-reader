@@ -29,11 +29,15 @@ interface ArticleListProps {
   view: 'all' | 'feed' | 'saved' | 'highlights'
   selectedArticleId: string | null
   onSelectArticle: (article: Article) => void
+  /** 每次左侧导航点击时自增，用于显式触发重新拉取并应用已读过滤 */
+  refreshKey: number
+  /** 每当当前展示的文章数组变化时上报完整（未分页截断的）数组，供上一篇/下一篇导航使用 */
+  onArticlesChange?: (articles: Article[]) => void
 }
 
 const PAGE_SIZE = 50
 
-export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }: ArticleListProps) {
+export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle, refreshKey, onArticlesChange }: ArticleListProps) {
   const { settings, updateSettings } = useReadingSettings()
   const hideRead = view === 'saved' ? false : (settings.hideRead ?? false)
   const [displayLimit, setDisplayLimit] = useState(PAGE_SIZE)
@@ -78,6 +82,16 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
     markAllAsRead,
     mutate: mutateFeedArticles,
   } = useArticles(view === 'feed' ? feedId || undefined : undefined, hideRead)
+
+  // 仅在左侧导航发生点击（refreshKey 变化）时才显式重新拉取，跳过首次挂载避免与初始 fetch 重复
+  const isFirstMountRef = useRef(true)
+  useEffect(() => {
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false
+      return
+    }
+    mutateFeedArticles()
+  }, [refreshKey, mutateFeedArticles])
   
   const {
     articles: savedArticles,
@@ -88,6 +102,10 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle }
   const articles = view === 'saved' ? savedArticles : feedArticles
   const isLoading = view === 'saved' ? isSavedLoading : isFeedLoading
   const toggleSaved = view === 'saved' ? toggleSavedSaved : toggleFeedSaved
+
+  useEffect(() => {
+    onArticlesChange?.(articles)
+  }, [articles, onArticlesChange])
 
   // 在 saved 视图不显示隐藏已读按钮
   const showHideReadToggle = view !== 'saved'

@@ -11,6 +11,8 @@ import {
   User,
   FileDown,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   X,
   Trash2,
   Maximize2,
@@ -32,7 +34,7 @@ import { sanitizeHtml, getReadingTime } from '@/lib/rss-parser'
 import { generateMarkdown, downloadMarkdown, generateFilename } from '@/lib/markdown-export'
 import { ReadingSettings } from './reading-settings'
 import { HighlightToolbar } from './highlight-toolbar'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { useIsMobile, useIsTablet } from '@/hooks/use-mobile'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -329,9 +331,13 @@ interface ArticleReaderProps {
   onClose?: () => void
   isExpanded?: boolean
   onToggleExpand?: () => void
+  onNavigatePrev?: () => void
+  onNavigateNext?: () => void
+  hasPrev?: boolean
+  hasNext?: boolean
 }
 
-export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: ArticleReaderProps) {
+export function ArticleReader({ article, onClose, isExpanded, onToggleExpand, onNavigatePrev, onNavigateNext, hasPrev, hasNext }: ArticleReaderProps) {
   const { markAsRead, toggleSaved, fetchFullContent, revertFullContent } = useArticles()
   const isOffline = useOffline()
   // SWR-backed live view of the article — auto-refreshes after fetchFullContent
@@ -341,6 +347,8 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
   const { settings } = useReadingSettings()
   const { highlights, createHighlight, removeHighlight } = useHighlights(article?.id || null)
   const isMobile = useIsMobile()
+  const isTablet = useIsTablet()
+  const isCompact = isMobile || isTablet
   
   const [toolbarPosition, setToolbarPosition] = useState<{ x: number; y: number } | null>(null)
   const [selectedText, setSelectedText] = useState('')
@@ -848,6 +856,33 @@ export function ArticleReader({ article, onClose, isExpanded, onToggleExpand }: 
                 </PopoverContent>
               </Popover>
             )}
+          </div>
+        )}
+
+        {isCompact && (onNavigatePrev || onNavigateNext) && (
+          <div className="absolute right-4 bottom-6 z-40 flex flex-col gap-3">
+            <Button
+              variant="secondary"
+              size="icon"
+              className="size-10 rounded-full border border-border/70 bg-background/90 shadow-lg backdrop-blur disabled:opacity-40"
+              onClick={onNavigatePrev}
+              disabled={!hasPrev}
+              title="上一篇文章"
+              aria-label="上一篇文章"
+            >
+              <ChevronUp className="size-5" />
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              className="size-10 rounded-full border border-border/70 bg-background/90 shadow-lg backdrop-blur disabled:opacity-40"
+              onClick={onNavigateNext}
+              disabled={!hasNext}
+              title="下一篇文章"
+              aria-label="下一篇文章"
+            >
+              <ChevronDown className="size-5" />
+            </Button>
           </div>
         )}
 

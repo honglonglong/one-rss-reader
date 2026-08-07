@@ -10,6 +10,7 @@ import { HighlightsPanel } from '@/components/highlights-panel'
 import { OfflineIndicator } from '@/components/offline-indicator'
 import { useIsMobile, useIsTablet } from '@/hooks/use-mobile'
 import { useAppBadge } from '@/hooks/use-app-badge'
+import { useMarkArticleRead } from '@/hooks/use-articles'
 import { cleanupOldReadArticles, getDB } from '@/lib/db'
 import type { Article } from '@/lib/types'
 import { SyncProvider } from '@/components/sync-provider'
@@ -24,6 +25,15 @@ const FEED_LIST_DEFAULT_WIDTH = 240
 type View = 'all' | 'feed' | 'saved' | 'highlights'
 
 export default function Home() {
+  return (
+    <SyncProvider>
+      <HomeInner />
+    </SyncProvider>
+  )
+}
+
+// useMarkArticleRead()（内部依赖 useSyncContext）需要在 SyncProvider 之内调用，故拆出这一层
+function HomeInner() {
   const isMobile = useIsMobile()
   const isTablet = useIsTablet()
   useAppBadge()
@@ -46,7 +56,14 @@ export default function Home() {
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null)
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null)
   const [view, setView] = useState<View>('all')
+  // 每次点击左侧导航项（含重复点击当前项）自增，作为“重新应用已读过滤”的显式信号
+  const [articleListRefreshKey, setArticleListRefreshKey] = useState(0)
   const [feedErrors, setFeedErrors] = useState<Map<string, string>>(new Map())
+  // 打开阅读器那一刻的文章列表快照（用于上一篇/下一篇导航），不随之后的已读过滤而增删
+  const currentListArticlesRef = useRef<Article[]>([])
+  const [navSnapshot, setNavSnapshot] = useState<Article[]>([])
+  const [navIndex, setNavIndex] = useState(-1)
+  const markArticleRead = useMarkArticleRead()
   const [mobileView, setMobileView] = useState<'feeds' | 'articles' | 'reader' | 'settings'>('feeds')
   const [isReaderExpanded, setIsReaderExpanded] = useState(false)
   const [feedListWidth, setFeedListWidth] = useState<number>(FEED_LIST_DEFAULT_WIDTH)
@@ -111,6 +128,7 @@ export default function Home() {
     setSelectedArticle(null)
     setIsReaderExpanded(false)
     setMobileView('articles')
+    setArticleListRefreshKey((k) => k + 1)
   }
 
   const handleSetFeedError = useCallback((feedId: string, message: string) => {
@@ -132,6 +150,7 @@ export default function Home() {
     setSelectedArticle(null)
     setIsReaderExpanded(false)
     setMobileView('articles')
+    setArticleListRefreshKey((k) => k + 1)
   }
 
   const handleSelectHighlights = () => {
@@ -140,9 +159,21 @@ export default function Home() {
     setSelectedArticle(null)
     setIsReaderExpanded(false)
     setMobileView('articles')
+    setArticleListRefreshKey((k) => k + 1)
+    // Highlights 面板没有关联的文章列表，避免残留的旧列表引用污染导航快照
+    currentListArticlesRef.current = []
   }
 
   const handleSelectArticle = (article: Article) => {
+    const list = currentListArticlesRef.current
+    const idx = list.findIndex((a) => a.id === article.id)
+    if (idx === -1) {
+      setNavSnapshot([article])
+      setNavIndex(0)
+    } else {
+      setNavSnapshot(list)
+      setNavIndex(idx)
+    }
     setSelectedArticle(article)
     setMobileView('reader')
   }
@@ -157,6 +188,23 @@ export default function Home() {
     setIsReaderExpanded(!isReaderExpanded)
   }
 
+  const handleNavigate = async (direction: 1 | -1) => {
+    const targetIndex = navIndex + direction
+    if (targetIndex < 0 || targetIndex >= navSnapshot.length) return
+    const target = navSnapshot[targetIndex]
+    if (!target.isRead) {
+      await markArticleRead(target.id)
+      setNavSnapshot((prev) =>
+        prev.map((a, i) => (i === targetIndex ? { ...a, isRead: true, readAt: Date.now() } : a))
+      )
+    }
+    setSelectedArticle(target)
+    setNavIndex(targetIndex)
+  }
+
+  const hasPrevArticle = navIndex > 0
+  const hasNextArticle = navIndex >= 0 && navIndex < navSnapshot.length - 1
+
   // Mobile layout — bottom navigation
   if (isMobile) {
     const mobileNavItems = [
@@ -166,7 +214,6 @@ export default function Home() {
     ]
     return (
       <>
-      <SyncProvider>
       <div className="h-dvh flex flex-col bg-background">
         {/* Main content */}
         <div className="flex-1 overflow-hidden">
@@ -191,10 +238,19 @@ export default function Home() {
               view={view}
               selectedArticleId={null}
               onSelectArticle={handleSelectArticle}
+              refreshKey={articleListRefreshKey}
+              onArticlesChange={(list) => { currentListArticlesRef.current = list }}
             />
           )}
           {mobileView === 'reader' && (
-            <ArticleReader article={selectedArticle} onClose={handleCloseArticle} />
+            <ArticleReader
+              article={selectedArticle}
+              onClose={handleCloseArticle}
+              onNavigatePrev={() => handleNavigate(-1)}
+              onNavigateNext={() => handleNavigate(1)}
+              hasPrev={hasPrevArticle}
+              hasNext={hasNextArticle}
+            />
           )}
           {mobileView === 'settings' && (
             <div className="h-full overflow-y-auto p-4">
@@ -228,7 +284,6 @@ export default function Home() {
 
         <OfflineIndicator />
       </div>
-      </SyncProvider>
       <SplashScreen isVisible={!isAppReady} />
       </>
     )
@@ -238,7 +293,6 @@ export default function Home() {
   if (isTablet) {
     return (
       <>
-      <SyncProvider>
       <div className="h-dvh flex bg-background overflow-hidden relative">
         {/* Left: Feed list */}
         <div className="w-[280px] shrink-0 h-full overflow-hidden border-r border-border">
@@ -264,6 +318,8 @@ export default function Home() {
               view={view}
               selectedArticleId={selectedArticle?.id || null}
               onSelectArticle={handleSelectArticle}
+              refreshKey={articleListRefreshKey}
+              onArticlesChange={(list) => { currentListArticlesRef.current = list }}
             />
           )}
         </div>
@@ -271,13 +327,19 @@ export default function Home() {
         {/* Full-screen reader overlay */}
         {selectedArticle && (
           <div className="absolute inset-0 z-50 bg-background animate-in slide-in-from-right duration-300">
-            <ArticleReader article={selectedArticle} onClose={handleCloseArticle} />
+            <ArticleReader
+              article={selectedArticle}
+              onClose={handleCloseArticle}
+              onNavigatePrev={() => handleNavigate(-1)}
+              onNavigateNext={() => handleNavigate(1)}
+              hasPrev={hasPrevArticle}
+              hasNext={hasNextArticle}
+            />
           </div>
         )}
 
         <OfflineIndicator />
       </div>
-      </SyncProvider>
       <SplashScreen isVisible={!isAppReady} />
       </>
     )
@@ -286,7 +348,6 @@ export default function Home() {
   // Desktop layout - three columns with expandable reader
   return (
     <>
-    <SyncProvider>
     <div className="h-dvh flex bg-background overflow-hidden">
       {/* Sidebar - feeds */}
       <div
@@ -331,6 +392,8 @@ export default function Home() {
             view={view}
             selectedArticleId={selectedArticle?.id || null}
             onSelectArticle={handleSelectArticle}
+            refreshKey={articleListRefreshKey}
+            onArticlesChange={(list) => { currentListArticlesRef.current = list }}
           />
         )}
       </div>
@@ -346,7 +409,6 @@ export default function Home() {
 
       <OfflineIndicator />
     </div>
-    </SyncProvider>
     <SplashScreen isVisible={!isAppReady} />
     </>
   )
