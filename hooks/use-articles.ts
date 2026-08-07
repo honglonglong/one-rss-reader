@@ -79,7 +79,7 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
       return feedId ? getArticlesByFeed(feedId) : getAllArticles()
     },
     {
-      fallbackData: [],
+      // 注意：不能加 fallbackData！它会让 SWR 误以为数据已存在，配合 revalidateIfStale:false 会跳过首次真实拉取，导致列表永远为空
       // 已读状态的重新过滤只应由显式导航触发，避免后台自动重新验证把刚读过的文章从列表中移除
       revalidateIfStale: false,
       revalidateOnFocus: false,

@@ -60,34 +60,21 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // For page navigations, prefer the cached app shell and refresh it in the background.
+  // For page navigations, always go to the network first so a reload after an
+  // update reliably gets the new HTML — falling back to cache only offline.
+  // (Cache-first here previously caused reloads to intermittently keep
+  // serving stale HTML, which broke "upgrade and restart" on iOS.)
   if (request.mode === 'navigate') {
     event.respondWith(
-      caches.match(request).then((cachedResponse) => {
-        if (cachedResponse) {
-          const updatePromise = fetch(request)
-            .then((response) => {
-              if (!response.ok) return
-              const responseClone = response.clone()
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(request, responseClone)
-              })
-            })
-            .catch(() => {})
-          event.waitUntil(updatePromise)
-          return cachedResponse
-        }
-
-        return fetch(request)
-          .then((response) => {
-            const responseClone = response.clone()
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, responseClone)
-            })
-            return response
+      fetch(request)
+        .then((response) => {
+          const responseClone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseClone)
           })
-          .catch(() => caches.match('/'))
+          return response
         })
+        .catch(() => caches.match(request).then((cachedResponse) => cachedResponse || caches.match('/')))
     )
     return
   }
