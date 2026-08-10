@@ -198,7 +198,8 @@ export function ArticleList({ feedId, view, selectedArticleId, onSelectArticle, 
     if (pullY >= 60 && !isRefreshing) {
       setIsRefreshing(true)
       setPullY(0)
-      try { await refresh(feedId!) }
+      // 单订阅下拉刷新是用户显式操作，需要立即反映在当前列表上
+      try { await refresh(feedId!, { immediate: true }) }
       finally { setIsRefreshing(false) }
     } else {
       setPullY(0)

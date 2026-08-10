@@ -101,7 +101,7 @@ export function useFeeds() {
     await mutate()
   }
 
-  const refresh = async (feedId?: string, options?: { force?: boolean }): Promise<boolean> => {
+  const refresh = async (feedId?: string, options?: { force?: boolean; immediate?: boolean }): Promise<boolean> => {
     if (isOffline) {
       throw new Error('离线时只能浏览本地内容，无法刷新订阅')
     }
@@ -212,7 +212,11 @@ export function useFeeds() {
     }
 
     await mutate()
-    await globalMutate((key: unknown) => typeof key === 'string' && key.startsWith('article'))
+    // 默认延迟到下次导航才刷新 -unread 缓存，避免刚读过的文章瞬间从隐藏已读列表中消失；
+    // 只有单订阅下拉刷新（options.immediate）才需要立即反映在当前列表上
+    await globalMutate((key: unknown) =>
+      typeof key === 'string' && key.startsWith('article') && (options?.immediate === true || !key.endsWith('-unread'))
+    )
     await globalMutate('unread-counts')
     return didRefresh
   }

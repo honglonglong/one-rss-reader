@@ -154,15 +154,15 @@ export function useArticles(feedId?: string, hideRead: boolean = false) {
     const { content } = await response.json()
     await updateArticleContent(article.id, content, true)
 
-    // Refresh all caches that might include this article
-    await globalMutate((k: unknown) => typeof k === 'string' && k.startsWith('article'))
+    // 刷新单篇文章缓存，跳过 -unread 列表缓存以免连带把其他已读文章过滤掉
+    await globalMutate((k: unknown) => typeof k === 'string' && k.startsWith('article') && !k.endsWith('-unread'))
   }
 
   /** 回退到上一次抓取前的内容备份；返回 false 表示没有可回退的内容 */
   const revertFullContent = async (articleId: string): Promise<boolean> => {
     const reverted = await revertArticleContent(articleId)
     if (reverted) {
-      await globalMutate((k: unknown) => typeof k === 'string' && k.startsWith('article'))
+      await globalMutate((k: unknown) => typeof k === 'string' && k.startsWith('article') && !k.endsWith('-unread'))
     }
     return reverted
   }

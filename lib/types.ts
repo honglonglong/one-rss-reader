@@ -155,6 +155,8 @@ export interface SyncSnapshot {
   articles: Article[]
   highlights: Highlight[]
   settings: ReadingSettings | null
+  /** Optional, opt-in: raw stored cloud sync config blob (ciphertext if encrypted, plaintext JSON otherwise). */
+  syncConfig?: EncryptedSyncConfig | null
 }
 
 /**

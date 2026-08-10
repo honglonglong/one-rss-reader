@@ -65,6 +65,7 @@ import { useFeeds } from '@/hooks/use-feeds'
 import { useUnreadCounts } from '@/hooks/use-articles'
 import { useOffline, useServiceWorker } from '@/hooks/use-offline'
 import { useListFontSize } from '@/hooks/use-list-font-size'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { AddFeedDialog } from './add-feed-dialog'
 import SettingsPanel from './settings-panel'
 import { useSyncContext } from '@/components/sync-provider'
@@ -122,6 +123,7 @@ export function FeedList({
   const unreadCounts = useUnreadCounts()
   const { update } = useServiceWorker()
   const isOffline = useOffline()
+  const isMobile = useIsMobile()
   const { listFontSize } = useListFontSize()
   const { encryptedConfig, isSyncing, lastSyncAt, lastPulledAt, needsPassphrase, triggerSync, feedsToRefreshAfterSync, clearFeedsToRefreshAfterSync } = useSyncContext()
 
@@ -330,6 +332,33 @@ export function FeedList({
   const handleRefreshRef = useRef<() => Promise<void>>(handleRefresh)
   handleRefreshRef.current = handleRefresh
 
+  // 订阅列表页下拉刷新全部订阅（延迟过滤：走 handleRefresh 默认的非 immediate 路径）
+  const canPullRefreshAll = isMobile && !isOffline
+  const listContainerRef = useRef<HTMLDivElement>(null)
+  const pullTouchStartYRef = useRef(0)
+  const [pullY, setPullY] = useState(0)
+
+  const handleListTouchStart = (e: React.TouchEvent) => {
+    if (!canPullRefreshAll || isRefreshing) return
+    pullTouchStartYRef.current = e.touches[0].clientY
+  }
+
+  const handleListTouchMove = (e: React.TouchEvent) => {
+    if (!canPullRefreshAll || isRefreshing) return
+    const delta = e.touches[0].clientY - pullTouchStartYRef.current
+    if (delta <= 0) { setPullY(0); return }
+    const viewport = listContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null
+    if ((viewport?.scrollTop ?? 0) > 0) { setPullY(0); return }
+    setPullY(Math.min(delta * 0.4, 64))
+  }
+
+  const handleListTouchEnd = async () => {
+    if (!canPullRefreshAll) { setPullY(0); return }
+    const shouldRefresh = pullY >= 60 && !isRefreshing
+    setPullY(0)
+    if (shouldRefresh) await handleRefresh()
+  }
+
   useEffect(() => {
     const refreshWhenSyncComplete = () => {
       if (isOffline) return
@@ -406,7 +435,13 @@ export function FeedList({
   }
 
   return (
-    <div className="flex h-full flex-col border-r border-border bg-sidebar">
+    <div
+      ref={listContainerRef}
+      className="flex h-full flex-col border-r border-border bg-sidebar"
+      onTouchStart={handleListTouchStart}
+      onTouchMove={handleListTouchMove}
+      onTouchEnd={handleListTouchEnd}
+    >
       <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
         <h2 className="font-semibold text-sidebar-foreground">订阅</h2>
         <div className="flex gap-1">
@@ -474,6 +509,17 @@ export function FeedList({
             </span>
           </div>
           <Progress value={(refreshProgress.completed / refreshProgress.total) * 100} className="h-1.5" />
+        </div>
+      )}
+
+      {pullY > 0 && (
+        <div className="flex items-center justify-center overflow-hidden" style={{ height: pullY }}>
+          <ChevronDown
+            className={cn(
+              'size-4 text-muted-foreground transition-transform duration-200',
+              pullY >= 60 && 'rotate-180'
+            )}
+          />
         </div>
       )}
 

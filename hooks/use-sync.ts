@@ -83,8 +83,8 @@ export function useSync(): UseSyncReturn {
     const remote = await downloadFromCloud(decrypted)
     if (remote) {
       const stats = await importCloudData(remote)
-      // Invalidate all SWR caches so UI reflects merged data without a page reload
-      await globalMutate((key) => typeof key === 'string')
+      // 隐藏已读列表（-unread 缓存）的刷新只应由显式导航触发，跳过它以免同步瞬间把已读文章从当前列表中过滤掉
+      await globalMutate((key) => typeof key === 'string' && !key.endsWith('-unread'))
       setLastPulledAt(Date.now())
       if (stats.newFeedIds && stats.newFeedIds.length > 0) {
         setFeedsToRefreshAfterSync(stats.newFeedIds)

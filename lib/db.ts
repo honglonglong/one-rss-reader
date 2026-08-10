@@ -542,13 +542,14 @@ export async function purgeStaleTombstones(olderThanMs = ARTICLE_RETENTION_MS): 
 }
 
 /** Dump the entire database to a plain JS object. */
-export async function exportAllData(): Promise<SyncSnapshot> {
+export async function exportAllData(options?: { includeSyncConfig?: boolean }): Promise<SyncSnapshot> {
   const db = await getDB()
-  const [feeds, articles, highlights, rawSettings] = await Promise.all([
+  const [feeds, articles, highlights, rawSettings, syncConfig] = await Promise.all([
     db.getAll('feeds'),
     db.getAll('articles'),
     db.getAll('highlights'),
     db.get('settings', 'reading'),
+    options?.includeSyncConfig ? getSyncConfig() : Promise.resolve(null),
   ])
   return {
     version: 2,
@@ -557,6 +558,7 @@ export async function exportAllData(): Promise<SyncSnapshot> {
     articles,
     highlights,
     settings: rawSettings ?? null,
+    ...(syncConfig ? { syncConfig } : {}),
   }
 }
 

@@ -91,22 +91,24 @@ function HomeInner() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isReaderExpanded])
 
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+  const handleResizeStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
+    // Pointer Events unify mouse/touch/pen so the same handler works for iPad drag
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     isResizingRef.current = true
     startXRef.current = e.clientX
     startWidthRef.current = feedListWidth
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (!isResizingRef.current) return
       const delta = e.clientX - startXRef.current
       const newWidth = Math.min(FEED_LIST_MAX_WIDTH, Math.max(FEED_LIST_MIN_WIDTH, startWidthRef.current + delta))
       setFeedListWidth(newWidth)
     }
 
-    const handleMouseUp = () => {
+    const endResize = () => {
       isResizingRef.current = false
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
@@ -114,12 +116,14 @@ function HomeInner() {
         localStorage.setItem(FEED_LIST_WIDTH_KEY, String(w))
         return w
       })
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', endResize)
+      window.removeEventListener('pointercancel', endResize)
     }
 
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', endResize)
+    window.addEventListener('pointercancel', endResize)
   }, [feedListWidth])
 
   const handleSelectFeed = (feedId: string | null) => {
@@ -295,7 +299,7 @@ function HomeInner() {
       <>
       <div className="h-dvh flex bg-background overflow-hidden relative">
         {/* Left: Feed list */}
-        <div className="w-[280px] shrink-0 h-full overflow-hidden border-r border-border">
+        <div className="shrink-0 h-full overflow-hidden" style={{ width: feedListWidth }}>
           <FeedList
             selectedFeedId={selectedFeedId}
             onSelectFeed={handleSelectFeed}
@@ -307,6 +311,12 @@ function HomeInner() {
             onClearFeedError={handleClearFeedError}
           />
         </div>
+
+        {/* Resize handle */}
+        <div
+          className="h-full w-1 shrink-0 cursor-col-resize touch-none hover:bg-primary/40 active:bg-primary/60 transition-colors"
+          onPointerDown={handleResizeStart}
+        />
 
         {/* Right: Article list or Highlights */}
         <div className="flex-1 min-w-0 h-full overflow-hidden">
@@ -372,8 +382,8 @@ function HomeInner() {
       {/* Resize handle */}
       {!isReaderExpanded && (
         <div
-          className="h-full w-1 shrink-0 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
-          onMouseDown={handleResizeStart}
+          className="h-full w-1 shrink-0 cursor-col-resize touch-none hover:bg-primary/40 active:bg-primary/60 transition-colors"
+          onPointerDown={handleResizeStart}
         />
       )}
 

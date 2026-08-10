@@ -2,8 +2,8 @@ import { exportAllData, importAllData } from './db'
 import type { SyncSnapshot, ImportStats } from './types'
 
 /** Serialize and trigger a browser download of the snapshot JSON. */
-export async function downloadSnapshot(): Promise<void> {
-  const snapshot = await exportAllData()
+export async function downloadSnapshot(options?: { includeSyncConfig?: boolean }): Promise<void> {
+  const snapshot = await exportAllData(options)
   const json = JSON.stringify(snapshot, null, 2)
   const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)

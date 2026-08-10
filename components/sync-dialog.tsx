@@ -11,14 +11,25 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { downloadSnapshot, readSnapshotFile, importSnapshot, formatExportDate } from '@/lib/sync'
-import { encryptSyncConfig, decryptSyncConfig, hasSessionKey } from '@/lib/sync-crypto'
+import { encryptSyncConfig, decryptSyncConfig, hasSessionKey, clearSessionKey } from '@/lib/sync-crypto'
 import { testCloudConnection } from '@/lib/cloud-sync'
 import { toastError } from '@/lib/error-utils'
 import type { SyncSnapshot } from '@/lib/types'
@@ -92,6 +103,12 @@ const PROVIDER_LABELS: Record<SyncProviderType, string> = {
   'aws-s3': 'AWS S3',
 }
 
+// true only when the blob's credentials are AES-GCM ciphertext (not plaintext JSON)
+function isEncryptedBlob(cfg: EncryptedSyncConfig | null | undefined): boolean {
+  if (!cfg) return false
+  return cfg.isEncrypted === true || (!!cfg.salt && !!cfg.iv)
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function SyncDialog({
@@ -114,6 +131,9 @@ export function SyncDialog({
   const [pendingSnapshot, setPendingSnapshot] = useState<SyncSnapshot | null>(null)
   const [importStats, setImportStats] = useState<ImportStats | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [includeSyncConfigOnExport, setIncludeSyncConfigOnExport] = useState(true)
+  const [restoreSyncConfigOnImport, setRestoreSyncConfigOnImport] = useState(true)
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
 
   // Cloud sync form state
   const [provider, setProvider] = useState<SyncProviderType>('github-gist')
@@ -144,7 +164,7 @@ export function SyncDialog({
   const handleExport = async () => {
     setIsExporting(true)
     try {
-      await downloadSnapshot()
+      await downloadSnapshot({ includeSyncConfig: isConfigured && includeSyncConfigOnExport })
       toast.success('备份文件已下载')
     } catch {
       toast.error('导出失败，请重试')
@@ -161,19 +181,30 @@ export function SyncDialog({
       const snapshot = await readSnapshotFile(file)
       setPendingSnapshot(snapshot)
       setImportStats(null)
+      setRestoreSyncConfigOnImport(true)
     } catch (err) {
       toastError(err, '文件读取失败')
     }
   }
 
-  const handleImport = async () => {
+  // Runs the actual merge; restoreConfig gates whether the backup's cloud sync config is applied
+  const doImport = async (restoreConfig: boolean) => {
     if (!pendingSnapshot) return
+    setShowOverwriteConfirm(false)
     setIsImporting(true)
     try {
       const stats = await importSnapshot(pendingSnapshot)
+      let message = '导入完成'
+      if (restoreConfig && pendingSnapshot.syncConfig && onSaveConfig) {
+        clearSessionKey() // drop any stale cached key so the restored config isn't mistaken for already-unlocked
+        await onSaveConfig(pendingSnapshot.syncConfig)
+        message += isEncryptedBlob(pendingSnapshot.syncConfig)
+          ? '，云同步配置已恢复，请前往云同步页输入密码解锁'
+          : '，云同步配置已恢复'
+      }
       setImportStats(stats)
       setPendingSnapshot(null)
-      toast.success('导入完成')
+      toast.success(message)
       await globalMutate((key) => typeof key === 'string')
       onImportDone?.()
     } catch {
@@ -181,6 +212,16 @@ export function SyncDialog({
     } finally {
       setIsImporting(false)
     }
+  }
+
+  const handleImport = async () => {
+    if (!pendingSnapshot) return
+    // Restoring over an already-configured provider needs explicit confirmation
+    if (restoreSyncConfigOnImport && pendingSnapshot.syncConfig && isConfigured) {
+      setShowOverwriteConfirm(true)
+      return
+    }
+    await doImport(restoreSyncConfigOnImport)
   }
 
   // ── Cloud sync helpers ───────────────────────────────────────────────────────
@@ -387,6 +428,27 @@ export function SyncDialog({
                 <li>高亮标注和笔记</li>
               </ul>
             </div>
+            {isConfigured && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="export-sync-config"
+                    checked={includeSyncConfigOnExport}
+                    onCheckedChange={(v) => setIncludeSyncConfigOnExport(v === true)}
+                  />
+                  <Label htmlFor="export-sync-config" className="text-sm font-normal cursor-pointer">
+                    同时导出云同步配置（{PROVIDER_LABELS[encryptedConfig!.provider]}）
+                  </Label>
+                </div>
+                {includeSyncConfigOnExport && (
+                  isEncryptedBlob(encryptedConfig) ? (
+                    <p className="text-xs text-muted-foreground pl-6">已使用同步密码加密，可安全导出；恢复后需重新输入同步密码解锁。</p>
+                  ) : (
+                    <p className="text-xs text-destructive pl-6">未设置同步密码，导出文件将包含明文凭证（Token / 密码等），请妥善保管备份文件。</p>
+                  )
+                )}
+              </div>
+            )}
             <Button className="w-full" onClick={handleExport} disabled={isExporting}>
               {isExporting ? <RefreshCw className="mr-2 size-4 animate-spin" /> : <Download className="mr-2 size-4" />}
               下载备份文件
@@ -416,6 +478,28 @@ export function SyncDialog({
                       <span>{pendingSnapshot.articles.length} 篇文章</span>
                       <span>{pendingSnapshot.highlights.length} 条高亮</span>
                     </div>
+                    {pendingSnapshot.syncConfig && (
+                      <>
+                        <Separator />
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="import-sync-config"
+                            checked={restoreSyncConfigOnImport}
+                            onCheckedChange={(v) => setRestoreSyncConfigOnImport(v === true)}
+                          />
+                          <Label htmlFor="import-sync-config" className="text-sm font-normal cursor-pointer">
+                            同时恢复云同步配置（{PROVIDER_LABELS[pendingSnapshot.syncConfig.provider]}）
+                          </Label>
+                        </div>
+                        {restoreSyncConfigOnImport && (
+                          isEncryptedBlob(pendingSnapshot.syncConfig) ? (
+                            <p className="text-xs text-muted-foreground pl-6">备份中的配置已加密，恢复后需重新输入同步密码解锁。</p>
+                          ) : (
+                            <p className="text-xs text-destructive pl-6">备份中的配置为明文凭证，恢复后请注意保护本设备安全。</p>
+                          )
+                        )}
+                      </>
+                    )}
                     <Separator />
                     <Button className="w-full" onClick={handleImport} disabled={isImporting}>
                       {isImporting ? <RefreshCw className="mr-2 size-4 animate-spin" /> : <Upload className="mr-2 size-4" />}
@@ -462,22 +546,49 @@ export function SyncDialog({
         </Tabs>
   )
 
+  const overwriteConfirmDialog = (
+    <AlertDialog open={showOverwriteConfirm} onOpenChange={setShowOverwriteConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>覆盖当前云同步配置？</AlertDialogTitle>
+          <AlertDialogDescription>
+            本地已配置 {isConfigured ? PROVIDER_LABELS[encryptedConfig!.provider] : ''}，
+            导入将覆盖为备份中的 {pendingSnapshot?.syncConfig ? PROVIDER_LABELS[pendingSnapshot.syncConfig.provider] : ''}。
+            其余订阅 / 文章 / 高亮数据仍会正常合并导入。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => doImport(false)}>仅导入数据，不覆盖</AlertDialogCancel>
+          <AlertDialogAction onClick={() => doImport(true)}>覆盖并导入</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+
   if (asPanel) {
-    return tabsContent
+    return (
+      <>
+        {tabsContent}
+        {overwriteConfirmDialog}
+      </>
+    )
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>数据同步 / 备份</DialogTitle>
-          <DialogDescription>
-            通过云端存储在多设备间同步订阅、已读状态、收藏和高亮标注。
-          </DialogDescription>
-        </DialogHeader>
-        {tabsContent}
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>数据同步 / 备份</DialogTitle>
+            <DialogDescription>
+              通过云端存储在多设备间同步订阅、已读状态、收藏和高亮标注。
+            </DialogDescription>
+          </DialogHeader>
+          {tabsContent}
+        </DialogContent>
+      </Dialog>
+      {overwriteConfirmDialog}
+    </>
   )
 }
